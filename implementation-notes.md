@@ -1,0 +1,89 @@
+# Implementation Notes
+
+技术决策记录，按日期倒序。记「为什么、边界、契约与安全语义、坑」；
+架构现状与生效规则见 [CLAUDE.md](CLAUDE.md)。
+
+---
+
+## 2026-08-28 — 开启模型请求调试日志
+
+**做了什么**：`structured_output.py` 在导入模型客户端前设置 `ANTHROPIC_LOG=debug`，运行 demo 时会输出 SDK 发出的请求参数、目标 URL、状态码与响应头。
+
+**边界 / 安全**
+- SDK debug 日志不打印 HTTP 响应 body；响应内容仍通过 `include_raw=True` 查看解析前的 `AIMessage`。
+- 请求 body 会出现在终端日志中，可能含业务输入和 schema，生产不应常开；外部已设置 `ANTHROPIC_LOG` 时用 setdefault 不覆盖。
+
+---
+
+## 2026-08-28 — 并行分类 & 条件分支
+
+**做了什么**：新增 `parallel_branch.py`，用 `RunnableParallel` 并发判断情绪+类别，再用 `RunnableBranch` 按类别路由到投诉/咨询/兜底回复。整链 `analyze | RunnablePassthrough.assign(reply=route)`。
+
+**为什么这么做**
+- 情绪和类别两次判断互不依赖，`RunnableParallel` 并发跑，一次完整链 invoke 内发起两个并发模型请求，总耗时≈较慢的那条（串行则约等于两者相加）。
+- 末段用 `.assign(reply=route)` 而非 `analyze | route`：后者只返回回复字符串，会丢掉并行阶段的 sentiment/category；前者沿用阶段 2 语义，把回复追加进同一字典，中间态与回复都可见。
+
+**边界 / 契约**
+- 输入必须含 `feedback`；输出含 `sentiment`、`category`、`feedback`、`reply` 四键。
+- `RunnableParallel` 每条子链都收到完整输入字典，故用 `itemgetter("feedback")` 只取原文；写 `RunnablePassthrough()` 会把整个输入字典塞进 `feedback`，导致模板 `{feedback}` 看到字典文本。
+- `RunnableBranch` 按书写顺序检查条件，首个命中即停；顺序即业务优先级；全不命中走兜底。
+- 分类器契约是只回指定标签；输出经 `str.strip()` 归一化去掉换行，但**有意不解析同义词/标点**——若模型返回 `"投诉。"` 会走兜底（教学 demo 不做过度解析）。
+- 这是确定性 workflow，路由规则写死，不是自主决策的 Agent。
+
+**坑**
+- 分类输出末尾换行会让 `x["category"] == "投诉"` 精确比较失败而误走兜底，故必须 `.strip()`。
+- 使用 `RunnablePassthrough` 需在 import 显式引入，否则 `NameError`。
+- 自检直接检查真实 `route` 的条件谓词，但不调用各回复分支；`py_compile` 和该自检都不覆盖「真实模型分类是否正确」，须真实运行眼看分类命中（本次已验证：崩溃→投诉、会员到期→咨询）。
+
+---
+
+## 2026-08-28 — 招聘信息结构化输出
+
+**做了什么**：新增 `structured_output.py`，用 `with_structured_output(JobPosting)` 将自由文本直接抽取成经 Pydantic 校验的对象。
+
+**为什么这么做**
+- Pydantic schema 同时定义字段、类型和含义，省掉提示模型输出 JSON 后再手写解析与校验。
+- 显式使用 `method="function_calling"`（也是本版本默认值）：当前自定义 gateway 未兑现 Anthropic 原生 `json_schema` 约束，实测会返回自定义中文键并导致校验失败，而 tool calling 能按 schema 稳定返回。
+
+**边界 / 契约**
+- 输入必须含 `posting`；输出是 `JobPosting` 实例，而不是字符串或裸字典。
+- `min_salary_k` 是可选字段；其余字段必填。原文缺少公司名时，模型可返回空字符串，但不得编造。
+- 结构化输出保证形状和类型，不保证内容事实正确；信任边界上的业务数据仍需独立验证。
+- 如果 gateway 后续完整支持 Anthropic 原生 structured output，可切回 `method="json_schema"`。
+
+---
+
+## 2026-08-28 — 两步观点反驳链
+
+**做了什么**：新增 `multi_step_chain.py`，依次生成观点、再反驳该观点，并一次返回话题与两个步骤的结果。
+
+**为什么这么做**
+- 用两个 `RunnablePassthrough.assign` 保存中间输出，直观展示“前一步输出成为后一步输入”。
+- 完整链只调用一次；内部仍会产生两次模型请求，避免为了打印中间结果而把第一步重复调用。
+
+**边界 / 契约**
+- 输入必须含 `topic`；输出包含 `topic`、`opinion`、`rebuttal`。
+- 两步串行执行，第二步依赖第一步；任一步失败都会使整条链失败。
+- 这是固定流程的 workflow，不是会自主选择步骤或工具的 Agent。
+
+---
+
+## 2026-08-28 — LangChain Hello World 骨架
+
+**做了什么**：`hello.py` 用 LCEL 链 `prompt | model | StrOutputParser` 调 `claude-opus-4-8`。
+
+**为什么这么做**
+- 用 `langchain-anthropic` 的 `ChatAnthropic` 而非直接 SDK：演示 LangChain 本身，
+  这是 demo 的目的。简单场景 LangChain 是负担，但这里就是要展示框架。
+- 凭证 `api_key=ANTHROPIC_AUTH_TOKEN or ANTHROPIC_API_KEY`、`base_url=ANTHROPIC_BASE_URL`：
+  本机走自定义网关 + AUTH_TOKEN，不是 Anthropic 默认端点，故不能依赖 SDK 默认的
+  `ANTHROPIC_API_KEY` 自动发现。
+
+**边界 / 契约**
+- 无 `.env`，凭证假定已在 shell 环境中；缺失时 `os.environ[...]` 直接抛 KeyError（有意，
+  让失败早且明确）。
+- 单次 `invoke`，无流式、无重试、无对话记忆——超出 demo 范围。
+
+**坑**
+- `ANTHROPIC_BASE_URL` 已设时，若仍用 `ANTHROPIC_API_KEY` 路径会打到默认端点鉴权失败；
+  必须显式传 AUTH_TOKEN。
