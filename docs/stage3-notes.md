@@ -351,3 +351,73 @@ prompt caching、`response_format` ↔ `output_config.format`、thinking、并�
 
 判断方法同 §5：开 `ANTHROPIC_LOG=debug` 看实际发出去什么，再看返回里的 `model` 字段是谁
 ——本仓库就是这样抓到 `gpt-5.6-sol` 的（见 §4）。
+
+## 11. 返回的 `tool_use` 里为什么"一定"有 `name` / `title` / `remote` 这些字段？
+
+看一段实测返回：
+
+```json
+"content": [{
+  "type": "tool_use",
+  "id": "call_u26dXM72CRVTGKyA4XDWgRUV",
+  "name": "JobPosting",
+  "input": {
+    "title": "高级后端工程师", "company": "", "location": "上海",
+    "remote": true, "min_salary_k": 30,
+    "skills": ["Python", "PostgreSQL", "Kubernetes"],
+    "work_experience": 3
+  }
+}]
+```
+
+三类字段，三种不同强度的保证，别混为一谈：
+
+| 字段 | 为什么在 | 强度 |
+|---|---|---|
+| `name: "JobPosting"` | `tool_choice` 指名要它，工具表里也只有它 | 请求参数锁死 |
+| `title` / `company` / `location` / `remote` / `skills` | 在 schema 的 `required` 里 | schema 锁死（视 strict 而定） |
+| `min_salary_k` / `work_experience` | 不在 `required`，有 `default: null`；原文恰好提到"30k 起""3-5 年" | 模型自愿填的 |
+
+- `tool_choice` 换成 `"auto"`，模型可以选择不调工具、直接回文本，`content` 里就只剩 `text` 块，`tool_calls` 为空——`with_structured_output` 解析会失败（呼应 §6 结尾那个 thinking 的坑）。
+- 可选字段的缺席才是正确行为，正是 §1 那两行 `assert` 守的契约。
+
+### 坑：`required` 只保证"键存在"，不保证"值有意义"
+
+上面返回里 `"company": ""` —— 原文压根没写公司名，但 `company` 被放进了 `required`，模型不能省略这个键，于是塞了个空串交差。**"没有信息"被扭曲成了"信息是空字符串"**，下游 `if not data.company` 和 `if data.company is None` 会踩到不同的雷。
+
+修法与 `min_salary_k` 一致——凡是原文可能不提的，一律 Optional：
+
+```python
+company: str | None = Field(None, description="公司名称，文本没提到就留空")
+```
+
+同一段返回里 `work_experience: 3` 是另一个信息损失：原文"3-5 年"被压进单个 int，区间丢了。要么拆 `min_years` / `max_years`，要么直接存原文字符串。**schema 设计决定了信息能不能无损落地**，模型只能在你给的形状里尽力。
+
+### `strict` 决定"一定"有多硬
+
+本仓库这次请求是 `"strict": false`：
+
+- `strict: true` —— **约束解码**，服务端在生成时把不合 schema 的 token 概率抹零，结构必然合法（代价：schema 要带 `additionalProperties: false`，且部分 JSON Schema 特性不支持）。
+- `strict: false` —— 退化成**强提示 + 事后校验**，绝大多数时候对，极端情况仍可能返回不合 schema 的结构，靠 Pydantic 兜底报错。
+
+要真正的"一定"，把 strict 打开（§7 末尾提到的可选加固就是这件事）。
+
+---
+
+## 12. 这些参数是 API 提供商支持才能写吗？
+
+**是，而且是双向的约束。**
+
+**① 请求里能写什么，由服务端契约定。** 请求体不是随便拼的 JSON。`tool_choice` / `strict` / `reasoning.effort` / `verbosity` 都是提供商在 API 文档里声明支持的字段，自己发明一个 `temperature_v2` 上去，只会被忽略或直接 400。§9 那张对照表里两家字段名不同，根源就在这——同一个"工具入参 schema"，Anthropic 叫 `input_schema`，OpenAI 叫 `parameters`。
+
+**② "一定返回这些字段"的保证，也在服务端。** 约束解码是提供商在推理侧实现的，客户端做不到——客户端只能拿到结果后校验、失败重试。所以 §11 那个 `strict` 开关的效力，完全取决于网关/上游是否真的实现了它（§6 已经证明本网关连 `output_config.format` 都不兑现，`strict` 同理要实测）。
+
+**③ LangChain 只是翻译层。** 本仓库写的是一份 Pydantic 模型：
+
+```python
+model.with_structured_output(JobPosting, method="function_calling")
+```
+
+内部把它编译成当前 provider 的工具格式塞进请求，再把返回的 `tool_use.input` 反序列化回 Pydantic 对象。换成 `ChatOpenAI`，同一份 `JobPosting` 会被编译成 §9 里那种 `parameters` 形状，业务代码一行不改——这是这层抽象唯一值钱的地方。
+
+**代价**：provider 独有的能力（Anthropic 的 `thinking`、OpenAI 的 `verbosity`）得靠 `model_kwargs` 透传，抽象就漏出来了。加上 §4 说的"`raw` 已经不是真正的原始响应"——统一抽象换来的可移植性，代价永远是看不清底下发生了什么。

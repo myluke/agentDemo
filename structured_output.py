@@ -41,6 +41,10 @@ class JobPosting(BaseModel):
         default=None, description="月薪下限，单位千元；文本没提到就留空"
     )
     skills: list[str] = Field(description="要求的技能/关键词列表")
+    ##工作年限
+    work_experience: Optional[int] = Field(
+        default=None, description="工作年限，单位年；文本没提到就留空"
+    )
 
 
 # 本版本还可选 method="json_schema"（Anthropic 原生），但当前自定义网关不兑现该约束，
@@ -60,6 +64,7 @@ if __name__ == "__main__":
     posting = (
         "我们招一名高级后端工程师，base 上海，可远程。"
         "要求熟悉 Python、PostgreSQL 和 Kubernetes，月薪 30k 起。"
+        "工作经验：3-5 年"
     )
 
     # 链的输出直接是 JobPosting 实例，可以像普通对象一样点字段。
@@ -80,6 +85,7 @@ if __name__ == "__main__":
     print(f"【地点】{job.location}（远程：{'是' if job.remote else '否'}）")
     print(f"【月薪下限】{job.min_salary_k}k" if job.min_salary_k else "【月薪下限】未提及")
     print(f"【技能】{', '.join(job.skills)}")
+    print(f"【工作年限】{job.work_experience}年" if job.work_experience else "【工作年限】未提及")
 
     # 自检：拿一段没提薪资的文本，min_salary_k 必须为 None（可选字段的容错）。
     result2 = extract_chain.invoke({"posting": "招前端实习生，北京现场办公，会 React 即可。"})

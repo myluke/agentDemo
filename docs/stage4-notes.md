@@ -88,6 +88,107 @@ RunnableBranch(
 - **`RunnableBranch`**：适合分支本身也是 Runnable、需要继续接入 LCEL 链的固定流程；路由规则仍由代码写死。
 - **Agent**：由模型根据目标和上下文自主决定下一步或调用什么工具。这里没有自主决策，只是确定性的 workflow，不是 Agent。
 
+## `|` 到底是什么
+
+`|` 本是 Python 的按位或运算符，LangChain 在 `Runnable` 基类里重载了 `__or__`，
+把它变成「管道」：**左边的输出原样作为右边的输入**，心智模型和 shell 的
+`cat a.txt | grep x | wc -l` 一致。
+
+```python
+chain = prompt | model | parser
+# 等价于 prompt.__or__(model).__or__(parser)
+# 实际构造出 RunnableSequence(prompt, model, parser)
+
+chain.invoke({"topic": "猫"})
+# 1. prompt.invoke({"topic": "猫"}) → PromptValue
+# 2. model.invoke(PromptValue)      → AIMessage
+# 3. parser.invoke(AIMessage)       → str
+```
+
+重载大致是这样，关键在 `coerce_to_runnable`：
+
+```python
+class Runnable:
+    def __or__(self, other):
+        return RunnableSequence(self, coerce_to_runnable(other))
+```
+
+它会把右边的普通对象自动转成 Runnable，所以链里可以直接写函数和字典：
+
+| 写法 | 自动变成 |
+|---|---|
+| `chain \| some_function` | `RunnableLambda(some_function)` |
+| `chain \| {"a": c1, "b": c2}` | `RunnableParallel(a=c1, b=c2)` |
+| `chain \| runnable` | 原样使用 |
+
+因此本阶段的 `analyze | RunnablePassthrough.assign(reply=route)`
+就是 `RunnableSequence(analyze, RunnablePassthrough.assign(reply=route))` 的语法糖。
+
+### 坑：左边必须是 Runnable
+
+`__or__` 定义在 `Runnable` 上，所以纯 dict 开头会失败：
+
+```python
+{"a": chain1} | chain2      # ✗ TypeError，dict 不认识 | Runnable
+chain0 | {"a": chain1}      # ✓ 左边是 Runnable，右边被 coerce
+```
+
+要以 dict 开头就显式包一层：`RunnableParallel(a=chain1) | chain2`。
+
+## Runnable 家族速查
+
+先纠正一个常见误解：`RunnableParallel` / `RunnableBranch` / `RunnablePassthrough`
+**不是函数，是 LangChain 的 Runnable 类**（LCEL 组件），实例化后靠 `|` 组装成链。
+
+| 组件 | 作用 | 一句话 |
+|---|---|---|
+| `RunnableParallel` | 并发跑多个分支，结果合并成一个 dict | 扇出：一份输入 → 多个 key 同时算 |
+| `RunnableBranch` | 按条件选一条链走（if/elif/else） | 路由：第一个命中的条件决定走哪条链 |
+| `RunnablePassthrough` | 原样透传输入，或用 `.assign()` 往 dict 里追加字段 | 搬运：不改数据，只透传或追加 |
+
+```python
+# RunnableParallel —— 两种等价写法
+chain = RunnableParallel(joke=chain1, poem=chain2)
+chain = {"joke": chain1, "poem": chain2}        # dict 字面量会自动转成 Parallel
+# 输入 x → {"joke": chain1(x), "poem": chain2(x)}
+
+# RunnablePassthrough.assign —— 保留原输入，再加一个字段
+chain = RunnablePassthrough.assign(context=retriever)
+# {"q": "..."} → {"q": "...", "context": retriever({"q": "..."})}
+
+# RunnableBranch —— (条件, 链) 元组列表 + 兜底
+chain = RunnableBranch(
+    (lambda x: "code" in x["topic"], code_chain),
+    (lambda x: "math" in x["topic"], math_chain),
+    default_chain,   # 都不匹配走这条
+)
+```
+
+### 还有哪些 Runnable
+
+**常用（LCEL 必备）**
+
+- `RunnableSequence` —— `|` 管道的底层，串联。写 `a | b` 就是在造它。
+- `RunnableLambda` —— 把普通函数塞进链里，如 `RunnableLambda(lambda x: x.upper())`。
+- `RunnablePassthrough` / `RunnableParallel` / `RunnableBranch` —— 本阶段这三个。
+
+**次常用**
+
+- `RunnableConfig` —— 不是链，是调用时的配置（`callbacks` / `tags` / `max_concurrency`）。
+- `RunnableWithFallbacks` —— `.with_fallbacks([...])`，主链失败时切备用链。
+- `RunnableWithMessageHistory` —— 给链加对话记忆，多轮聊天用。
+- `RunnableBinding` —— `.bind()` / `.with_config()` 的底层，预先固定部分参数。
+
+**少用 / 进阶**
+
+- `RunnableRetry` —— `.with_retry()`，失败重试。
+- `RunnableGenerator` —— 流式生成器场景。
+- `RunnableEach` —— 对列表里每个元素跑同一条链。
+- `DynamicRunnable` —— `.configurable_fields()` / `.configurable_alternatives()`，运行时切换模型或参数。
+
+日常大约九成场景只会用到「常用」那几个，而且多半不用手写类名：`|`、dict 字面量、
+`.assign()`、`.bind()` 这些语法糖会自动构造对应的 Runnable。
+
 ---
 
 **一句话**：`RunnableParallel` 并发完成互不依赖的步骤并合并字典，`RunnableBranch` 再按字典里的结果执行第一个命中的固定分支。
