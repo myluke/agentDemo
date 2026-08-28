@@ -302,3 +302,52 @@ client.messages.count_tokens(
    中间必有一层 adapter。这解释了 §6 的现象：`tools` / `tool_choice` 能翻译（两家都有
    对应概念），但 `output_config.format` 翻不过去（OpenAI 侧叫 `response_format`，
    语义还不完全等价），所以 `json_schema` 在这里不兑现约束。
+
+---
+
+## 10. 国产模型（豆包 / 千问 / GLM / Kimi）的 API 参考谁设计的？
+
+**以 OpenAI 为准，不是 Anthropic。**
+
+事实上的行业标准是 OpenAI 的 Chat Completions——国内几家的**原生 / 默认**接口全是它的形状
+（`messages` 数组、`tools[].function` 套娃、`choices[0].message`、`finish_reason`）：
+
+| 厂商 | OpenAI 兼容端点 |
+|---|---|
+| 豆包（火山方舟 Ark） | `https://ark.cn-beijing.volces.com/api/v3/chat/completions` |
+| 千问（阿里云百炼） | `https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions` |
+| GLM（智谱） | `https://open.bigmodel.cn/api/paas/v4/chat/completions` |
+| Kimi（Moonshot） | `https://api.moonshot.cn/v1/chat/completions` |
+| DeepSeek | `https://api.deepseek.com/chat/completions` |
+
+所以国内 SDK 大多直接 `pip install openai` 改个 `base_url` 就能用。
+
+### Anthropic 格式是后补的兼容层
+
+这两年才加的，动机很单一：**让 Claude Code 能接自家模型**。路径上通常带 `/anthropic` 前缀：
+
+- Kimi：`https://api.moonshot.cn/anthropic/v1/messages`
+- 智谱：`https://open.bigmodel.cn/api/anthropic`
+- 豆包 / MiniMax / DeepSeek 也都有对应端点
+
+用法就是设 `ANTHROPIC_BASE_URL` + `ANTHROPIC_AUTH_TOKEN`——**和本仓库现在干的事一模一样**。
+
+### 两个例外
+
+1. **千问有自己的原生格式**（DashScope）：`{"input": {"messages": [...]}, "parameters": {...}}`，
+   两层嵌套，跟谁都不像。OpenAI 兼容模式是另开的一条路——注意 URL 里那段 `compatible-mode`。
+2. **豆包早期要传 endpoint ID**（`ep-2024xxxx`）而非模型名，现在支持直接填模型名，
+   但老代码里还能见到。
+
+### 对本仓库的意义
+
+兼容层**只保核心字段**（`messages` / `tools` / `tool_choice` / `stream`），边缘功能基本翻译不过去：
+prompt caching、`response_format` ↔ `output_config.format`、thinking、并行工具调用、logprobs
+——行为各不相同甚至直接忽略。
+
+这正是 §6 那个坑的通用版本：**`tools` / `tool_choice` 两家都有对应概念所以能翻译，
+`output_config.format` 没有等价物所以静默失效。** 换任何一个国产网关都会遇到同类问题，
+不是某个网关的 bug，是兼容层的固有边界。
+
+判断方法同 §5：开 `ANTHROPIC_LOG=debug` 看实际发出去什么，再看返回里的 `model` 字段是谁
+——本仓库就是这样抓到 `gpt-5.6-sol` 的（见 §4）。

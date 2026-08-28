@@ -21,6 +21,13 @@ model = ChatAnthropic(
     base_url=os.environ.get("ANTHROPIC_BASE_URL"),
 )
 
+def print_raw_response(response):
+    response.read()
+    print("\n=== HTTP 原始响应 ===")
+    print(response.text)
+
+
+model._client._client.event_hooks["response"].append(print_raw_response)
 
 # schema 即契约：字段名、类型、Field 描述都会喂给模型，指导它怎么填。
 class JobPosting(BaseModel):
