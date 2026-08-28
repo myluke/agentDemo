@@ -7,32 +7,55 @@
 关键点：
 - RunnableParallel：多个子链并发执行，结果合并成一个字典（省掉串行等待）。
 - RunnableBranch：按 (条件, 分支) 依次匹配，命中即走那条分支，末尾是兜底。
+- 分类用阶段 3 的结构化输出：Literal 枚举在类型层面锁死标签，分支比较才安全。
 """
 import os
 from operator import itemgetter
+from typing import Literal
 
 from langchain_anthropic import ChatAnthropic
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableBranch, RunnableParallel, RunnablePassthrough
+from pydantic import BaseModel, Field, ValidationError
 
-model = ChatAnthropic(
-    model="claude-opus-4-8",
+_creds = dict(
     max_tokens=1024,
     api_key=os.environ.get("ANTHROPIC_AUTH_TOKEN") or os.environ["ANTHROPIC_API_KEY"],
     base_url=os.environ.get("ANTHROPIC_BASE_URL"),
 )
 
+# 回复要写人话，用 Opus；两个分类器只吐一个枚举标签，Haiku 足够且更快更便宜。
+model = ChatAnthropic(model="claude-opus-4-8", **_creds)
+fast = ChatAnthropic(model="claude-haiku-4-5", **_creds)
 
-def classifier(system: str):
-    """造一个「读 {feedback}、只回一个词」的小分类链。"""
+
+class Sentiment(BaseModel):
+    """情绪分类结果。"""
+
+    label: Literal["正面", "负面", "中性"] = Field(description="这条反馈的情绪")
+
+
+class Category(BaseModel):
+    """类别分类结果。"""
+
+    label: Literal["投诉", "咨询", "其它"] = Field(description="这条反馈的类别")
+
+
+def classifier(system: str, schema: type[BaseModel]):
+    """造一个「读 {feedback}、返回 schema 里那个枚举标签」的小分类链。
+
+    用 with_structured_output 而不是靠提示词约束格式：Literal 枚举参与工具
+    schema，模型填不出表外的值，也就没有 "投诉。" / "类别：投诉" 这类漂移，
+    下游 x["category"] == "投诉" 的精确比较才立得住。
+    method 沿用 structured_output.py 的结论：当前网关不兑现 json_schema。
+    """
     return (
         ChatPromptTemplate.from_messages(
             [("system", system), ("human", "{feedback}")]
         )
-        | model
-        | StrOutputParser()
-        | str.strip  # 去掉首尾空白/换行，否则 x["category"] == "投诉" 会被换行带偏走兜底
+        | fast.with_structured_output(schema, method="function_calling")
+        | (lambda x: x.label)  # 只把标签字符串带下去，后面的模板和条件都按字符串用
     )
 
 
@@ -40,8 +63,8 @@ def classifier(system: str):
 # dict 里每个值都是一条子链；RunnableParallel 会同时触发，结果合并成
 # {"sentiment": ..., "category": ..., "feedback": 原文}。
 analyze = RunnableParallel(
-    sentiment=classifier("判断这条反馈的情绪，只回一个词：正面 / 负面 / 中性。"),
-    category=classifier("判断这条反馈的类别，只回一个词：投诉 / 咨询 / 其它。"),
+    sentiment=classifier("判断这条反馈的情绪。", Sentiment),
+    category=classifier("判断这条反馈的类别。", Category),
     feedback=itemgetter("feedback"),  # 只取原文字符串带下去（RunnablePassthrough 会塞整个字典）
 )
 
@@ -81,6 +104,7 @@ if __name__ == "__main__":
         # 一次完整链 invoke 内并发发起「情绪」「类别」两个模型请求，总耗时≈较慢的那条，
         # 再按 category 走对应分支生成回复。
         result = full_chain.invoke({"feedback": fb})
+        print(f"raw result:{result}\n")
         print(f"【反馈】{fb}")
         print(f"【情绪】{result['sentiment']}  【类别】{result['category']}")
         print(f"【回复】{result['reply']}\n")
@@ -94,4 +118,12 @@ if __name__ == "__main__":
     assert complaint_cond.invoke({"category": "咨询"}) is False
     assert inquiry_cond.invoke({"category": "咨询"}) is True
     assert inquiry_cond.invoke({"category": "退款"}) is False  # 未列类别两条都不命中→走兜底
-    print("[self-check] 分支条件命中正确 ✓")
+
+    # 自检：Literal 确实拒绝表外标签——这正是分支敢用 == 精确比较的依据。
+    try:
+        Category(label="投诉。")
+    except ValidationError:
+        pass
+    else:
+        raise AssertionError("Literal 未拦住表外标签")
+    print("[self-check] 分支条件命中正确、枚举拒绝表外标签 ✓")
