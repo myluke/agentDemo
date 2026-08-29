@@ -421,3 +421,100 @@ model.with_structured_output(JobPosting, method="function_calling")
 内部把它编译成当前 provider 的工具格式塞进请求，再把返回的 `tool_use.input` 反序列化回 Pydantic 对象。换成 `ChatOpenAI`，同一份 `JobPosting` 会被编译成 §9 里那种 `parameters` 形状，业务代码一行不改——这是这层抽象唯一值钱的地方。
 
 **代价**：provider 独有的能力（Anthropic 的 `thinking`、OpenAI 的 `verbosity`）得靠 `model_kwargs` 透传，抽象就漏出来了。加上 §4 说的"`raw` 已经不是真正的原始响应"——统一抽象换来的可移植性，代价永远是看不清底下发生了什么。
+
+---
+
+## 13. 国产模型都支持 `tool_choice` 强制调用吗？
+
+**不能默认支持。** §6 说过 `method="function_calling"` 底层就是
+`tool_choice={"type":"function","function":{"name":"JobPosting"}}`（强制调指定函数）——
+这在国内各家参差不齐，**思考模式模型是重灾区**。
+
+| 厂商 | 指定函数 / `required` |
+|---|---|
+| DeepSeek | `deepseek-chat`(V3) ✅；`deepseek-reasoner` / V4（默认思考模式）❌ 直接 400 `does not support this tool_choice` |
+| Kimi | `kimi-k3` ✅ 支持 auto/none/required；其余模型不支持 `required`，传了报错 |
+| 通义千问 | OpenAI 兼容模式文档列了全套取值，但思考模式 / VL 模型有限制，按具体模型确认 |
+| 智谱 GLM | 官方文档没有 `tool_choice` 取值表，只能实测 |
+
+**最阴的坑**：DeepSeek 在你**没传** `tool_choice` 时也可能报这个错——
+`reasoning_effort` + `tools` 会让服务端内部推断出一个 `tool_choice`。
+排错时别在客户端请求体里找，找不到的。
+
+**波及范围**：LangChain / AutoGen / CrewAI 绑定结构化输出时都会发送具体函数名的
+`tool_choice`，所以是整片框架一起挂，不是某个库的 bug。
+
+---
+
+## 14. 那退回 `json_object` 就都支持了？
+
+前半句对，后半句不对。**这是两档能力，别混为一谈：**
+
+| | `json_object` | `json_schema`（strict） |
+|---|---|---|
+| 保证什么 | 语法是合法 JSON | 字段名 / 类型 / 必填**严格符合** schema |
+| 谁来保证 | 服务端 | 服务端约束解码 |
+| 国内覆盖 | 基本都有 | 很窄 |
+
+- **DeepSeek**：`response_format` 只有 `text` / `json_object` 两个取值，
+  `json_schema` 直接拒（返回 "unavailable now"）。schema 约束只存在于 beta 端点
+  （`base_url="https://api.deepseek.com/beta"`）的 tool calling `strict: true`，
+  且有已知 bug——返回的 `function.arguments` 第一个属性名少个收尾双引号，解析直接炸。
+- **通义千问**：`json_schema` 只有 `qwen-plus-latest` 和少数 2025 快照支持，还限北京地域。
+
+**所以 `json_object` 模式下，「约定返回什么字段」靠的是提示词，不是 API 强制。**
+`with_structured_output(..., method="json_mode")` 正是干这个：LangChain 把 schema
+塞进 prompt 当「约定」，拿回文本再用 Pydantic 校验。模型漏字段、类型给错都可能发生，
+`include_raw=True` 的 `parsing_error`（§3）就是这时候的兜底。
+
+一句话：**语法有保证，schema 没有，得自己校验 + 重试。**
+
+---
+
+## 15. `json_object` 对模型版本有要求吗？小模型是不是不支持？
+
+有要求，但**是「版本快照」的要求，不是「模型大小」的要求**。
+
+千问官方划的线是一个日期：
+
+| 模型 | 支持情况 |
+|---|---|
+| `qwen-max-2024-09-19` 及之后的快照 | ✅（之前的 ❌） |
+| `qwen-plus-2024-09-19` 及之后 | ✅ |
+| `qwen-turbo-latest`、`qwen2.5` 系列 | ✅ ← **turbo 是小模型，照样支持** |
+| `qwen-long` 全部快照 | ✅ |
+
+所以不是「小模型不行」，是「2024 年 9 月之前的老快照不行」。现在随手拿 `-latest`
+或近两年的快照，`json_object` 基本都有。
+
+### 三个与模型档次无关的坑
+
+1. **思考模式**——最大雷区。千问文档在不同版本里说法自相矛盾（有的说不支持，
+   有的说「不报错但结构化输出可能失效」）；DeepSeek 那边同样是思考模型出问题。
+   **静默失效比报错更难查。**
+2. **prompt 里没有 "json" 字样** → 400，报错原文：
+   `'messages' must contain the word 'json' in some form`。千问、DeepSeek 都有这条硬性检查。
+3. **设了 `max_tokens`** → JSON 输出中途被截断 → 解析失败。开结构化输出时别设，
+   或设得足够大（呼应 §8）。
+
+### 对本仓库的意义
+
+把 §6、§13、§14 串起来看，是同一条规律的三次现身——
+**能力越靠近服务端约束解码，跨 provider 的可移植性越差**：
+
+```text
+tools / tool_choice=auto   两家都有等价概念  → 翻译得过去
+tool_choice 指定函数        语义相近但实现分裂 → 部分模型 400
+json_object                语法层保证，门槛低 → 基本都有
+json_schema / strict       服务端约束解码     → 几乎翻译不过去
+```
+
+本仓库的网关（转发到 `gpt-5.6-sol`，见 §4）不兑现 `output_config.format` 不是孤例，
+是这条规律在最右端的必然结果。真要换国产模型，降级顺序是：
+
+```text
+function_calling → json_mode → prompt 塞 schema + PydanticOutputParser
+```
+
+判断当前档位能不能用，方法还是 §5 那套：`ANTHROPIC_LOG=debug` 看实际发出去什么，
+再看返回里的 `model` 字段是谁。
