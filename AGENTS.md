@@ -1,13 +1,13 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
 
 ## What this is
 
 A staged LangChain learning repository. Stages 1–4 cover LCEL basics, sequential
 chains, structured output, and parallel/branch workflows; stage 5 covers multi-turn
 memory with a LangGraph checkpointer as the one deliberate exception to the LCEL
-sequence, all against Claude via `langchain-anthropic`.
+sequence, all against Codex via `langchain-anthropic`.
 
 ## Run
 
@@ -30,7 +30,7 @@ set in the shell already; there is no `.env`.
 ## implementation-notes.md（必须同步）
 
 实现或变更功能时，**必须**同步在 `implementation-notes.md` 顶部追加一条记录
-（按日期倒序）。分工：CLAUDE.md 写当前生效的规则与架构现状（每次会话自动注入）；
+（按日期倒序）。分工：AGENTS.md 写当前生效的规则与架构现状（每次会话自动注入）；
 notes 写决策依据与演进历史，记「为什么这么做、边界在哪、契约与安全语义、踩过的坑」
 （需显式阅读）。
 

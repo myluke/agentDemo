@@ -5,6 +5,27 @@
 
 ---
 
+## 2026-08-29 — LangGraph checkpointer 多轮记忆
+
+**做了什么**：新增 `chat_memory.py`，用 `MessagesState` + `StateGraph` + `InMemorySaver` 实现按 `thread_id` 隔离的多轮对话记忆；加入 `langgraph` 依赖，并完成阶段 5 文档同步。
+
+**为什么这么做**
+- `langchain-core` 1.6.1 的 `RunnableWithMessageHistory` 已从 1.3.3 起弃用，官方明确指向 LangGraph；core 内没有未弃用的等价 LCEL wrapper，因此本阶段按决策破例采用 LangGraph 的 checkpointer。
+- 选裸 `StateGraph` 而不是 `create_react_agent`：只展示状态累积、消息历史和线程隔离，不提前混入工具调用或 Agent 循环；后两者分别留给阶段 7、8。
+- `MessagesState` 自带 `add_messages` reducer；节点只需把累计消息喂给模型并返回新的 AI 消息，checkpointer 负责跨轮保存状态。
+
+**边界 / 契约**
+- `graph.invoke` 必须传 `configurable.thread_id`；同一 `thread_id` 共享历史，不同 `thread_id` 逻辑隔离。
+- `InMemorySaver` 只存进当前 Python 进程的内存，进程退出即丢；生产环境应换持久化 saver（如 Postgres/SQLite），并处理连接、迁移和生命周期。
+- `thread_id` 只是状态分区键，不是鉴权边界；真实服务必须在服务端校验当前用户是否有权访问该 thread，不能直接信任外部传入的 ID。
+- 本阶段是单节点、单步 workflow，不包含工具、循环、自主决策；不把「记住名字」等模型输出当作事实验证。
+
+**坑**
+- 忘传 `thread_id` 会使 checkpointer 无法定位会话并直接报错。
+- 必须复用同一个已挂载 checkpointer 的 compiled graph；换新 `InMemorySaver` 或进程后，内存历史自然消失。
+
+---
+
 ## 2026-08-29 — 按任务拆分分类与回复模型
 
 **做了什么**：`parallel_branch.py` 为分类器增加 `claude-haiku-4-5`，只吐枚举标签的情绪/类别链使用 `fast`；生成自然语言回复的分支继续使用 `claude-opus-4-8` 的 `model`。
