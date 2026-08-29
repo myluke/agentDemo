@@ -220,3 +220,64 @@ demo 用“是否支持海外配送”验证资料缺失路径。它只能降低
 
 **一句话**：RAG 不让模型凭空变聪明，而是在回答前替它找对资料；检索决定“看什么”，
 模型决定“怎么说”。
+
+## 从「跑通」到「能用」：业内私有部署通用方案
+
+`rag_basic.py` 演示的是最小闭环；企业内部知识问答通常把检索部分升级成下面这条流水线：
+
+```text
+问题 ─┬─ BM25 关键词召回 ─┐
+      └─ 向量语义召回   ──┴─ RRF 融合 ─→ rerank 重排 ─→ top-k context ─→ 大模型
+             （召回 20~100）       （精排 3~10）
+```
+
+### 为什么不是只用向量检索
+
+两类检索的强项互补：
+
+| 检索 | 擅长 | 弱点 |
+|---|---|---|
+| 向量（dense） | 同义表达、自然语言语义；如「喵星人」找「猫」 | 型号、编号、专有名词、罕见 token 可能被语义平均掉 |
+| BM25（sparse） | 精确词、数字、错误码、产品型号；罕见词有高 IDF 权重 | 换一种说法就可能完全匹配不到 |
+
+因此业内常见做法是两路并行召回，再用 **RRF（Reciprocal Rank Fusion）** 按名次合并。两路分数的量纲不同：向量余弦相似度通常在 0～1，BM25 没有固定上限，不能未经归一化就直接相加；RRF 只使用名次，默认不需要为每批语料重新调权重。
+
+本仓库的 [`rag_hybrid.py`](../rag_hybrid.py) 用零依赖 BM25 + `InMemoryVectorStore` + RRF 演示这一步，并用带 `VIP-2049` 的罕见编号验证 BM25 的价值。它和 [`rag_basic.py`](../rag_basic.py) 共用 `bigrams`，确保差异来自检索算法，而不是切词差异。
+
+### 为什么还需要 rerank
+
+召回和精排是两个目标：
+
+1. **召回（recall）**：候选宁可多一些，确保答案所在的块在候选里；
+2. **重排（precision）**：候选多会稀释重点、增加 token，因此用更精确的模型把候选收敛到少数几块。
+
+生产常用 cross-encoder，例如 `bge-reranker-v2-m3`：它把“问题 + 文块”成对输入，直接判断相关性，比两个独立向量的距离更细。`rag_hybrid.py` 为了不再增加依赖，使用已有的 Claude Haiku 结构化输出，只让它返回候选编号；这是同样的 rerank 接口形状，但成本和延迟通常高于本地 cross-encoder。实际部署应把它替换成自托管 reranker 服务。
+
+### 一套常见的私有化组件栈
+
+| 环节 | 常见选型 | 关键考虑 |
+|---|---|---|
+| 文档解析 | MinerU、Docling、Unstructured、OCR | PDF 版面、表格、扫描件质量往往比模型大小更影响效果 |
+| 切分 | 版面感知切分、父子块 | 小块用于召回，父块用于提供完整上下文；保留标题、页码和来源 |
+| Embedding | 本地 `bge-m3`、Qwen Embedding；TEI/vLLM/Xinference | embedding 服务和索引必须使用同一模型/维度 |
+| 向量库 | Milvus、Qdrant；已有 PostgreSQL 可用 pgvector | 持久化、metadata filter、租户隔离、备份和扩容 |
+| 关键词检索 | Elasticsearch / OpenSearch，或向量库自带 sparse/BM25 | 专有名词、编号、错误码检索；通常和 dense 结果做 RRF |
+| 重排 | `bge-reranker-v2-m3`、Qwen Reranker | 召回 20～100，精排到 3～10；关注吞吐和延迟 |
+| 生成模型 | vLLM/SGLang 自托管 Qwen、DeepSeek、GLM 等 | GPU、并发、上下文窗口、量化和模型许可 |
+| 编排 | LangChain / LlamaIndex，或自建薄服务 | 保持 retriever 的输入/输出契约，方便替换组件 |
+| 评估与观测 | RAGAS、Langfuse（均可私有部署） | 召回率、忠实度、引用正确性、延迟、token 和失败样本 |
+
+### 两种落地路线
+
+**开箱即用**：RAGFlow、Dify、FastGPT 等 Docker 私有部署产品。适合先交付内部知识库、权限和工作流，少写基础设施；代价是检索细节、模型服务和版本升级受平台约束。
+
+**自建组合**：`解析器 + LangChain/LlamaIndex + Milvus/Qdrant + bge-m3 + bge-reranker + vLLM/SGLang`。适合需要接入既有 IAM/组织权限、定制召回策略、审计和多租户隔离的团队；运维、GPU、索引重建和评测成本由自己承担。
+
+无论选哪条，真正不能省的是：
+
+- **权限过滤**：按 tenant、部门、角色、文档密级做 metadata filter，且在 BM25 和向量库查询阶段执行；不能先召回全部内容再靠 prompt 防泄露。
+- **来源引用**：每个 chunk 保留文档 ID、版本、页码/段落，回答返回可追溯来源。
+- **不可信文档隔离**：文档可能夹带 prompt injection；检索内容只能作为资料，不能变成系统指令。`rag_hybrid.py` 的 reranker 已做最小示范，生成链仍需在生产环境配合隔离和测试。
+- **可评测调参**：用真实问题集调 `chunk_size`、`overlap`、两路召回数量、RRF 参数和最终 `k`，同时看 recall、答案忠实度、延迟和成本。
+
+**一句话**：私有 RAG 的通用升级不是“换一个更大的模型”，而是“解析好 → dense+sparse 召回 → RRF → rerank → 带引用生成”，再把权限和评测放到检索链路里。

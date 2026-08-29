@@ -5,6 +5,29 @@
 
 ---
 
+## 2026-08-30 — RAG 混合检索与重排
+
+**做了什么**：新增 `rag_hybrid.py`，在基础 RAG 上演示 BM25 关键词检索、向量检索、RRF（Reciprocal Rank Fusion）融合和 rerank；更新 `rag_basic.py`，抽出两路共用的字符 bigram 切词函数；同步路线图和阶段 6 笔记。
+
+**为什么这么做**
+- 纯向量检索对同义表达友好，但会弱化专有名词、编号和罕见 token；BM25 的 TF/IDF 恰好擅长精确词匹配。两路并行可以覆盖互补的失败模式。
+- 向量相似度和 BM25 分数没有可比的量纲，直接加权相加需要为每批语料调权重；RRF 只看名次，免除分数归一化和权重调参，适合教学和作为生产默认起点。
+- 召回阶段取较大的候选集，目标是“不漏答案”；再用 cross-encoder 或 LLM reranker 精排，目标是“把最有用的少数片段交给模型”，减少上下文稀释和 token 消耗。
+- 当前环境没有 `langchain-community` 的 BM25Retriever、也没有本地 cross-encoder 推理服务，因此用零依赖 BM25 和已有 Claude Haiku 结构化输出演示相同的接口形状；生产应优先使用 bge-reranker-v2-m3 等本地 cross-encoder。
+
+**边界 / 契约 / 安全**
+- `rag_hybrid.py` 复用基础 RAG 的内存语料和 `LocalEmbeddings`，只演示排序机制；它仍然是单进程、重启丢失、教学级字面 embedding，不是可直接承载业务的知识库。
+- BM25、向量路和融合的候选数（当前 5、RRF 后 4、精排后 2）只是样本参数；生产用真实问题集分别评测 recall@k、MRR、nDCG、答案忠实度和延迟再调参。
+- 文档内容是不可信输入。重排 prompt 明确要求把候选当数据而不是执行指令；生产生成 prompt 还应保留来源、文档版本和引用，并对 prompt injection 做隔离测试。
+- 权限过滤必须在 BM25 和向量检索前或检索库内部按 metadata 下推，不能先召回再在模型层“希望它别泄露”；tenant/user 权限是服务端鉴权逻辑，不是 prompt 约束。
+
+**坑**
+- `bigrams` 同时用于哈希向量和 BM25，避免两路因切词不同产生虚假的对比；它仍不是中文分词器，换真实 embedding/BM25 服务时应按模型和语料选择 tokenizer。
+- RRF 不能修复两路都没召回答案的问题；解析质量、chunk 边界、metadata 过滤仍是上游硬门槛。
+- LLM reranker 成本和延迟高于 cross-encoder，且结构化输出只保证编号格式，不保证排序判断正确；候选编号越界时代码会过滤并保留前几项兜底。
+
+---
+
 ## 2026-08-29 — LCEL 基础 RAG
 
 **做了什么**：新增 `rag_basic.py`，完整演示加载、递归切分、向量化、内存向量检索和 grounded generation；检索器作为 Runnable 直接接入 LCEL。新增 `langchain-text-splitters` 和 `numpy` 依赖，并完成阶段 6 文档同步。

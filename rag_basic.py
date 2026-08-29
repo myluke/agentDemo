@@ -37,6 +37,16 @@ model = ChatAnthropic(
 )
 
 
+def bigrams(text: str) -> list[str]:
+    """中文没有空格分词，用字符 bigram 当「词」：「免运费」→ ["免运", "运费"]。
+
+    够用且零依赖（不引 jieba）。阶段 6 的向量化和 rag_hybrid 的 BM25 共用它，
+    两路检索切词一致，排序差异才只来自打分方式而不是切词方式。
+    """
+    s = re.sub(r"\s+", "", text.lower())
+    return [s[i : i + 2] for i in range(len(s) - 1)] or [s]
+
+
 class LocalEmbeddings(Embeddings):
     """把文本哈希成定长向量：字符 bigram 词袋 → 哈希分桶 → L2 归一化。
 
@@ -52,10 +62,8 @@ class LocalEmbeddings(Embeddings):
     dim = 512
 
     def _vec(self, text: str) -> list[float]:
-        s = re.sub(r"\s+", "", text.lower())
-        grams = [s[i : i + 2] for i in range(len(s) - 1)] or [s]
         v = [0.0] * self.dim
-        for g, n in Counter(grams).items():
+        for g, n in Counter(bigrams(text)).items():
             v[hash(g) % self.dim] += n
         norm = math.sqrt(sum(x * x for x in v)) or 1.0
         return [x / norm for x in v]  # 归一化后点积=余弦相似度

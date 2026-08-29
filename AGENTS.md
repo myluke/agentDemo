@@ -17,6 +17,8 @@ sequence, all against Codex via `langchain-anthropic`.
 .venv/bin/python structured_output.py
 .venv/bin/python parallel_branch.py
 .venv/bin/python chat_memory.py
+.venv/bin/python rag_basic.py
+.venv/bin/python rag_hybrid.py
 pip install -r requirements.txt    # rebuild deps on a fresh machine
 ```
 

@@ -28,7 +28,7 @@ LCEL 链——所以阶段 1–7 不是铺垫，是阶段 8 的零件。
 | 3 | 结构化输出 | 让模型返回 JSON/对象，`with_structured_output` | `structured_output.py` | ✅ |
 | 4 | 并行 & 分支 | `RunnableParallel` 并发、`RunnableBranch` 条件分流 | `parallel_branch.py` | ✅ |
 | 5 | 记忆 / 多轮 | `MessagesState`、checkpointer、`thread_id` | `chat_memory.py` | ✅（例外用 LangGraph） |
-| 6 | 检索 (RAG) | 加载→切分→向量化→检索→喂给模型 | `rag_basic.py` | ✅ |
+| 6 | 检索 (RAG) | 加载→切分→向量化→检索→喂给模型；混合检索 + 重排 | `rag_basic.py` / `rag_hybrid.py` | ✅ |
 | 7 | 工具调用 | 给模型挂工具（function calling），模型自己决定调不调 | `tools.py` | 👉 下一步 |
 | 8 | Agent | 用 **LangGraph** 编排能自主循环、选工具的 Agent | `agent_graph.py` | ⬜ |
 
