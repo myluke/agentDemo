@@ -1,2 +1,4 @@
 langchain-anthropic
 langgraph
+langchain-text-splitters
+numpy

@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 A staged LangChain learning repository. Stages 1–4 cover LCEL basics, sequential
 chains, structured output, and parallel/branch workflows; stage 5 covers multi-turn
 memory with a LangGraph checkpointer as the one deliberate exception to the LCEL
-sequence, all against Claude via `langchain-anthropic`.
+sequence; stage 6 covers basic RAG, all against Claude via `langchain-anthropic`.
 
 ## Run
 
@@ -17,6 +17,7 @@ sequence, all against Claude via `langchain-anthropic`.
 .venv/bin/python structured_output.py
 .venv/bin/python parallel_branch.py
 .venv/bin/python chat_memory.py
+.venv/bin/python rag_basic.py
 pip install -r requirements.txt    # rebuild deps on a fresh machine
 ```
 

@@ -5,6 +5,28 @@
 
 ---
 
+## 2026-08-29 — LCEL 基础 RAG
+
+**做了什么**：新增 `rag_basic.py`，完整演示加载、递归切分、向量化、内存向量检索和 grounded generation；检索器作为 Runnable 直接接入 LCEL。新增 `langchain-text-splitters` 和 `numpy` 依赖，并完成阶段 6 文档同步。
+
+**为什么这么做**
+- 使用 `RecursiveCharacterTextSplitter` 而不是手写切片：它优先在自然边界断开，`chunk_overlap` 避免答案跨切口丢失。
+- 使用 core 自带的 `InMemoryVectorStore`：本阶段只学 RAG 数据流，不提前引入 Chroma/数据库及其生命周期。
+- 当前 `ANTHROPIC_BASE_URL` 网关的 `/v1/embeddings` 返回 404，Gemini embedding 网关不可达；因此实现最小 `LocalEmbeddings`（字符 bigram 哈希词袋）以跑通标准 `Embeddings` 接口，而不是伪造可用的远端服务。
+- 提示词强制“只依据资料，缺失则明确说不知道”，降低模型越过检索上下文自行补全的风险。
+
+**边界 / 契约**
+- `LocalEmbeddings` 衡量字面片段重叠，不理解同义词；它只用于教学，生产应替换成真实语义 embedding。替换时 vector store、retriever 和 LCEL 链无需改动。
+- Python 的内置 `hash()` 跨进程种子不同，但同一进程内建库与查询一致；`InMemoryVectorStore` 本来也不跨进程持久化。若持久化向量，必须同时使用稳定哈希或真正 embedding 模型。
+- `InMemoryVectorStore` 进程退出即丢，适合小型 demo；生产按数据量和过滤需求换持久化向量库。
+- `k=3` 是教学样本的召回参数，不是通用最优值；真实系统需用评测集调 chunk size、overlap、k，并测召回率与回答忠实度。
+- “只用资料”是提示约束而非安全边界；外部文档仍是不可信输入，生产 RAG 要处理 prompt injection、访问控制和来源引用。
+
+**坑**
+- `InMemoryVectorStore` 的余弦相似度实现依赖 `numpy`，缺失时在第一次检索抛 `ImportError`，因此必须显式列入依赖。
+- 检索命中不代表生成一定正确；自检确定性验证最关键的召回环节，真实运行另行观察“资料缺失”问题不被模型猜答。
+
+---
 ## 2026-08-29 — 记忆 demo 使用低推理档位
 
 **做了什么**：`chat_memory.py` 的 `ChatAnthropic` 显式设置 `reasoning_effort="low"`。
