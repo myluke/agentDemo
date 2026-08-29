@@ -274,6 +274,30 @@ Managed Agents 是把循环和机器都交给 Anthropic。两条路解决同一�
 
 ---
 
+## 国内厂商为什么也提供 `/v1/messages`
+
+Claude Code 只认 Anthropic 格式，靠 `ANTHROPIC_BASE_URL` + `ANTHROPIC_AUTH_TOKEN`
+两个环境变量决定「发到哪、用什么密钥」。国内厂商为了接住这批用户，纷纷在自家 OpenAI
+风格接口之外，**额外开一个 Anthropic 兼容端点**：
+
+```bash
+export ANTHROPIC_BASE_URL=https://open.bigmodel.cn/api/anthropic   # 智谱
+export ANTHROPIC_AUTH_TOKEN=<你的 key>
+```
+
+Kimi、DeepSeek、Qwen 等各有对应地址，查各自文档的「Claude Code」章节。注意这和厂商
+的主 API 地址是**两个不同的端点**，别混填。
+
+本仓库正是这个模式：`ANTHROPIC_BASE_URL` 指向自建网关，`langchain-anthropic` 照常
+发 Anthropic 格式的请求，网关背后是谁不影响。**判断一个平台是否原生兼容**：看文档里
+有没有 `/v1/messages`，且请求体是 `model` + `messages` + `max_tokens`。
+
+代价是兼容层通常只覆盖对话主路径，缓存、批处理、Files、Managed Agents 这些多半没有；
+`/v1/embeddings` 更是本来就不在 Anthropic 协议里。详见
+[api-openai.md 的「国内厂商的兼容现状」](api-openai.md#国内厂商的兼容现状双轨制)。
+
+---
+
 ## 常见坑
 
 - **`content` 是数组不是字符串**：直接 `response.content` 拿到的是块列表，

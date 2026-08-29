@@ -270,6 +270,84 @@ curl https://api.openai.com/v1/moderations \
 
 ---
 
+## 国内厂商的兼容现状：双轨制
+
+千问、Kimi、智谱、DeepSeek、豆包、MiniMax 这些基本都「兼容」，但要分清**兼容哪一套**。
+现在是两条协议线并行：
+
+| | OpenAI 格式 | Anthropic 格式 |
+|---|---|---|
+| 端点 | `/v1/chat/completions` | `/v1/messages` |
+| 地位 | **主线**，所有厂商的默认接口 | 副线，Claude Code 火了之后补的 |
+| 为什么做 | 生态里的工具（LangChain、Dify、各种客户端）都先接 OpenAI，照抄等于零成本接入 | 让用户能把 Claude Code 指向自家模型 |
+| 地址特征 | 就是厂商的主 API 地址 | 路径里通常带 `anthropic` |
+
+Anthropic 兼容端点举例：
+
+```bash
+# 智谱
+export ANTHROPIC_BASE_URL=https://open.bigmodel.cn/api/anthropic
+export ANTHROPIC_AUTH_TOKEN=<你的 key>
+# Kimi、DeepSeek、Qwen 各有对应地址，查各自文档的「Claude Code」章节
+```
+
+**关键**：同一家厂商，这是**两个不同的地址**，不是一个端点两种解析。别把 OpenAI
+风格的 base_url 填进 `ANTHROPIC_BASE_URL`——请求体形状对不上，直接报错。
+
+### 「兼容」的水分在哪
+
+厂商说的兼容，通常只保证**对话那一个端点**。周边端点缺得很常见：
+
+| 端点 | 国内厂商覆盖情况 |
+|---|---|
+| `/v1/chat/completions` | 全都有 |
+| `/v1/models` | 基本都有 |
+| `/v1/embeddings` | **看厂商**——千问、智谱有；DeepSeek 无（404）；Kimi 无明确官方文档 |
+| `/v1/batches` | 少数有 |
+| `/v1/audio`、`/v1/images` | 各搞各的，路径和参数经常不一样 |
+
+本仓库遇到的正是这种情况：网关的 `/v1/models` 正常，`/v1/embeddings` 返回 404。
+**兼容声明只是起点，用之前先实测**：
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" "$BASE_URL/v1/embeddings" \
+  -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+  -d '{"model":"text-embedding-3-small","input":"hi"}'
+```
+
+### 国内可用的 embedding
+
+Anthropic 本来就没有 embedding，但国产厂商里有两家做得不错——**这意味着本仓库阶段 6
+的 RAG 完全可以换成真语义检索，不用干等网关**：
+
+| 厂商 | 模型 | 端点 | 备注 |
+|---|---|---|---|
+| 通义千问 | `text-embedding-v4` | `https://dashscope.aliyuncs.com/compatible-mode/v1` | 维度可选 64–2048，单条最长 8192 token，单次最多 10 条 |
+| 智谱 | `embedding-3` | `https://open.bigmodel.cn/api/paas/v4` | 维度 256–2048 可调，约 0.5 元/百万 token |
+| DeepSeek | 无 | — | 只做 chat，向量得另找 |
+
+换法就是 `rag_basic.py` 里那一行（对话仍走现有的 `ChatAnthropic`，两边各用各的——
+LangChain 里 chat model 和 embeddings 本来就是独立组件）：
+
+```python
+from langchain_openai import OpenAIEmbeddings
+
+store = InMemoryVectorStore.from_documents(chunks, OpenAIEmbeddings(
+    model="text-embedding-v4",
+    base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+    api_key=os.environ["DASHSCOPE_API_KEY"],
+))
+```
+
+换上之后，「账号注销后资料还在吗」这类**换了说法**的提问才能召回到「会员到期后数据
+保留 180 天」——本地哈希实现做不到，见 [stage6-notes.md](stage6-notes.md)。
+
+### 这件事的启示
+
+**选 SDK 看端点形状，不是看模型是谁家的。** 本仓库用 `langchain-anthropic` 能跑通
+当前网关，是因为网关吐的是 Anthropic 形状，跟背后到底是不是 Claude 无关。同理，
+上面那段 `OpenAIEmbeddings` 指向阿里云也能用——因为阿里提供了 OpenAI 形状的端点。
+
 ## 和 Anthropic 的整体对照
 
 | 能力 | OpenAI | Anthropic |
