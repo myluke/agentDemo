@@ -87,6 +87,73 @@ embedding 能**——这就是 RAG 不用 `LIKE '%猫%'` 而用向量库的原�
 | 建库时 | 每个文块转一次向量，连同原文存进 vector store | `InMemoryVectorStore.from_documents(chunks, ...)` |
 | 提问时 | 问题转一次向量，拿去找最近邻 | `retriever.invoke(question)` |
 
+### 常见误解：能不能直接把整个文档丢给它？
+
+**不能。`/v1/embeddings` 是个「哑函数」：给一段文本，返回一个向量，仅此而已。**
+它不接受文件、不解析 PDF、不切分、不理解文档结构——切分是你的活。
+
+两个硬约束：
+
+**1. 有 token 上限，塞不下整篇**
+
+| 模型 | 单次输入上限 |
+|---|---|
+| `text-embedding-3-small` / `-large` | 8191 token |
+| `text-embedding-v4`（千问） | 8192 token，且单次最多 10 条 |
+| `embedding-3`（智谱） | 8K |
+
+一份产品手册几万字，直接扔进去要么报错，要么被**静默截断**——后者更坑，你以为存进去
+了，其实只有开头一段。
+
+**2. 就算塞得下，一个向量代表整篇也没用**
+
+这才是根本原因。假设手册里有退货、退款、会员、客服四类内容，压成一个向量后，它落在
+这四个主题的「平均位置」——一个谁都不像的点：
+
+```text
+问「退款多久到账」→ 整篇的向量   → 相似度 0.31（不高不低，谁都不像）
+                 → 退款那一块   → 相似度 0.88（明确命中）
+```
+
+而且检索到了也没用：你会把整篇几万字塞进 prompt，那 RAG 就白做了——本来就是为了
+**不发全文**才检索的。
+
+所以流水线里这四步，接口只管其中一步：
+
+```text
+读文件 → 提取纯文本 → 切分 → 调 /v1/embeddings → 存向量库
+  ↑         ↑          ↑          ↑
+ 你的活    你的活     你的活    接口只管这一步
+```
+
+`rag_basic.py` 里对应的就是那两行：
+
+```python
+splitter = RecursiveCharacterTextSplitter(chunk_size=60, chunk_overlap=15)
+chunks = splitter.create_documents([DOC])
+```
+
+### 「什么都不用管」的东西确实存在：托管向量库
+
+如果确实不想管切分，那要找的不是 embedding 接口，而是**托管向量库**——OpenAI 的
+`/v1/vector_stores` 把解析、切分、向量化、建索引全包了：
+
+```bash
+curl .../v1/vector_stores/vs_abc/files  -d '{"file_id": "file_xyz"}'   # PDF 直接传
+curl .../v1/vector_stores/vs_abc/search -d '{"query": "退款多久到账"}'  # 直接问
+```
+
+| | 管什么 | 你要做什么 |
+|---|---|---|
+| `/v1/embeddings` | 只做「文本 → 向量」 | 解析、切分、存储、检索全自己来 |
+| `/v1/vector_stores` | 从文件到检索全包 | 传文件、发问 |
+
+代价是 `chunk_size`、`chunk_overlap`、`k` 全由平台定，出了问题（该召回的没召回）你
+没有旋钮可调。Anthropic 没有对应产品；国内阿里云百炼、智谱有类似的知识库服务。
+
+**阶段 6 故意走前者**：先手搓一遍，才知道那三个参数影响的是什么。真上生产嫌调参麻烦
+再换托管不迟；反过来先用托管，出了问题连该怪哪一步都定位不了。
+
 ### 本仓库为什么用本地实现
 
 当前网关的 `/v1/embeddings` 返回 404——这不是配置漏了：**Anthropic 本身不提供
