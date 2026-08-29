@@ -5,6 +5,14 @@
 
 ---
 
+## 2026-08-29 — 记忆 demo 使用低推理档位
+
+**做了什么**：`chat_memory.py` 的 `ChatAnthropic` 显式设置 `reasoning_effort="low"`。
+
+**为什么这么做**：本 demo 只验证消息累积和线程隔离，不需要深度推理；`low` 比默认 `high` 更快、更省 token，同时不改变记忆机制。
+
+**边界**：`reasoning_effort` 控制模型推理投入，不控制 `InMemorySaver`、消息历史或 `thread_id` 隔离；复杂任务应按实际质量评估提高档位。
+
 ## 2026-08-29 — LangGraph checkpointer 多轮记忆
 
 **做了什么**：新增 `chat_memory.py`，用 `MessagesState` + `StateGraph` + `InMemorySaver` 实现按 `thread_id` 隔离的多轮对话记忆；加入 `langgraph` 依赖，并完成阶段 5 文档同步。

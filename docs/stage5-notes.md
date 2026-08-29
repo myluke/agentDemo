@@ -59,14 +59,43 @@ graph.invoke({"messages": [HumanMessage("我叫 Luke")]},
 校验当前用户是否有权访问这个 thread，不能直接信任外部传进来的 ID——否则
 换一个别人的 thread_id 就能读到别人的对话历史。
 
-## 记忆的持久性
+## 常见误解：记忆是 graph 存的吗？
 
-`InMemorySaver` 只存在**当前 Python 进程的内存**里，进程一退出记忆就没了
-（demo 每次重跑都是干净的）。官方 docstring 明确写它只用于调试/测试。
+不是。**graph 只是「跑一步」的流程壳**，真正的记忆由三件套分工完成：
 
-生产要跨进程/重启保留记忆，换持久化 saver：`PostgresSaver`、`SqliteSaver` 等
-（各自独立的包，落盘存储，重启后历史还在）。换 saver 不改图结构，只改
-`compile(checkpointer=...)` 那一处。
+- `add_messages` reducer 负责**追加**（不是覆盖）；
+- `checkpointer` 负责**存和读**；
+- `thread_id` 负责**选哪一份**。
+
+去掉 checkpointer，graph 照样能跑，但每次 `invoke` 都是空历史开局，记忆就没了。
+一句话：**graph 是流程，checkpointer 才是记忆。**
+
+至于「下次带着历史一起发给模型」——这句是对的：`call_model` 里
+`model.invoke(state["messages"])` 喂的是**累计的全部消息**，不只是本轮那句。
+代价是第 N 轮要重发前 N-1 轮，**token 随轮数线性上涨**。生产上会加裁剪或摘要
+（`trim_messages`），demo 故意不加，先把机制看清楚。
+
+## 记忆的持久性：InMemorySaver 存在哪？
+
+**纯进程内存**——本质就是个挂在 `InMemorySaver` 实例上的 Python dict，
+不写文件也不写数据库。官方 docstring 明确写它只用于调试/测试。
+
+三个直接后果：
+
+- 进程一退出记忆全没（demo 跑完，线程 A 的 "Luke" 就蒸发了，每次重跑都是干净的）；
+- 多进程 / 多 worker **不共享**，同一个 `thread_id` 打到另一个进程就是空历史；
+- 轮数一多内存只涨不降（不裁剪的话）。
+
+要落盘就换 saver，接口一致，只改 `compile(checkpointer=...)` 那一行，图结构不动：
+
+| Saver | 包 | 存在哪 |
+|---|---|---|
+| `InMemorySaver` | 内置 | 进程内存 |
+| `SqliteSaver` | `langgraph-checkpoint-sqlite` | 本地 `.db` 文件 |
+| `PostgresSaver` | `langgraph-checkpoint-postgres` | Postgres |
+
+demo 阶段用 `InMemorySaver` 是对的：不引依赖、不产生文件、跑完即净。
+等真要跨进程/重启保留再换。
 
 ## 和阶段 8 的关系
 

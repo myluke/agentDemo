@@ -24,6 +24,9 @@ from langgraph.graph import START, MessagesState, StateGraph
 model = ChatAnthropic(
     model="claude-opus-4-8",
     max_tokens=1024,
+    # 推理档位：low | medium | high(默认) | xhigh | max。不写就是 high——最贵那档。
+    # 这个 demo 只是「记住我叫什么」，low 足够，还更快更便宜。
+    reasoning_effort="low",
     api_key=os.environ.get("ANTHROPIC_AUTH_TOKEN") or os.environ["ANTHROPIC_API_KEY"],
     base_url=os.environ.get("ANTHROPIC_BASE_URL"),
 )
@@ -66,10 +69,12 @@ def history_of(thread_id: str) -> list:
 
 if __name__ == "__main__":
     # 线程 A：连说两轮，第二轮问名字——记忆生效则答得出 Luke。
-    print("【线程 A · 第1轮】我叫 Luke。")
+    print("【线程 A · 第1轮】介绍自己")
     print("  →", ask("我叫 Luke，请记住。", thread_id="A"))
-    print("【线程 A · 第2轮】我叫什么？")
-    a2 = ask("我叫什么名字？", thread_id="A")
+    print("【线程 A · 第2轮】介绍猫")
+    print("  →", ask("我家有只猫，它叫咪咪。", thread_id="A"))
+    print("【线程 A · 第3轮】我叫什么？，猫叫什么？")
+    a2 = ask("我叫什么名字？，猫叫什么？", thread_id="A")
     print("  →", a2)
 
     # 线程 B：全新记忆，同样问名字——隔离生效则答不出 Luke。
@@ -78,8 +83,8 @@ if __name__ == "__main__":
     print("  →", b1)
 
     # —— 自检：测的是 checkpointer 存取与 thread 隔离机制，不靠模型措辞 ——
-    # 线程 A 跑了两轮 = 2×(human+ai) = 4 条消息累计在它自己的历史里。
-    assert len(history_of("A")) == 4, f"线程 A 历史应有 4 条，实得 {len(history_of('A'))}"
+    # 线程 A 跑了三轮 = 3×(human+ai) = 6 条消息累计在它自己的历史里。
+    assert len(history_of("A")) == 6, f"线程 A 历史应有 6 条，实得 {len(history_of('A'))}"
     # 线程 B 只跑了一轮 = human+ai = 2 条，且它的历史里不该出现线程 A 的 "Luke"。
     assert len(history_of("B")) == 2, f"线程 B 历史应有 2 条，实得 {len(history_of('B'))}"
     b_text = "".join(m.content for m in history_of("B") if isinstance(m.content, str))
