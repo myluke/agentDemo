@@ -22,10 +22,8 @@
 下游 prompt / model / 链的形状和阶段 6 完全一致。
 """
 import math
-import os
 from collections import Counter
 
-from langchain_anthropic import ChatAnthropic
 from langchain_core.documents import Document
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
@@ -34,6 +32,7 @@ from langchain_core.vectorstores import InMemoryVectorStore
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from pydantic import BaseModel, Field
 
+from llm import openai_chat
 from rag_basic import DOC, LocalEmbeddings, bigrams, format_docs, model
 
 # 在阶段 6 的语料上补一条带**编号**的规则：这类罕见 token 正是向量检索的软肋、
@@ -106,12 +105,10 @@ class Ranking(BaseModel):
     order: list[int] = Field(description="按与问题的相关性从高到低排列的候选编号")
 
 
-ranker = ChatAnthropic(
-    model="claude-haiku-4-5",  # 只排序不写作，小模型足够，且 rerank 在链路上是热点
-    max_tokens=512,
-    api_key=os.environ.get("ANTHROPIC_AUTH_TOKEN") or os.environ["ANTHROPIC_API_KEY"],
-    base_url=os.environ.get("ANTHROPIC_BASE_URL"),
-).with_structured_output(Ranking, method="function_calling")
+# 只排序不写作，小模型足够，且 rerank 在链路上是热点
+ranker = openai_chat("gpt-5.4-mini", max_tokens=512).with_structured_output(
+    Ranking, method="function_calling"
+)
 
 rerank_prompt = ChatPromptTemplate.from_messages(
     [

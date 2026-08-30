@@ -16,11 +16,9 @@
 不装 torch、不调外部 API。换成真 embedding 服务时只替换这一个类，其余不动。
 """
 import math
-import os
 import re
 from collections import Counter
 
-from langchain_anthropic import ChatAnthropic
 from langchain_core.embeddings import Embeddings
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
@@ -28,13 +26,10 @@ from langchain_core.runnables import RunnablePassthrough
 from langchain_core.vectorstores import InMemoryVectorStore
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-model = ChatAnthropic(
-    model="claude-opus-5",
-    max_tokens=1024,
-    reasoning_effort="low",  # 照着资料复述，不需要高档推理
-    api_key=os.environ.get("ANTHROPIC_AUTH_TOKEN") or os.environ["ANTHROPIC_API_KEY"],
-    base_url=os.environ.get("ANTHROPIC_BASE_URL"),
-)
+from llm import openai_chat
+
+# 凭据统一由 llm.py 读 config.ini / 环境变量，这里只管挑模型和采样参数
+model = openai_chat(max_tokens=1024, temperature=0)  # temperature=0：照着资料复述，不要发挥
 
 
 def bigrams(text: str) -> list[str]:

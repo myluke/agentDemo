@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 A staged LangChain learning repository. Stages 1–4 cover LCEL basics, sequential
 chains, structured output, and parallel/branch workflows; stage 5 covers multi-turn
 memory with a LangGraph checkpointer as the one deliberate exception to the LCEL
-sequence; stage 6 covers RAG — basic pipeline plus hybrid retrieval and reranking, all against Claude via `langchain-anthropic`.
+sequence; stage 6 covers RAG — basic pipeline plus hybrid retrieval and reranking, all against the gateway via `langchain-openai` (OpenAI protocol).
 
 ## Run
 
@@ -24,10 +24,12 @@ pip install -r requirements.txt    # rebuild deps on a fresh machine
 
 ## Credentials
 
-The `ChatAnthropic` client reads `ANTHROPIC_AUTH_TOKEN` (falling back to
-`ANTHROPIC_API_KEY`) and `ANTHROPIC_BASE_URL` from the environment — this points
-at a custom gateway, not Anthropic's default endpoint. Both are expected to be
-set in the shell already; there is no `.env`.
+All model clients come from `llm.py` — `openai_chat(model, **kwargs)` builds a
+`ChatOpenAI` against the custom gateway (`base_url` + `/v1`). Credentials are read
+once in `llm.py`: `config.ini`'s `[api]` section (`api_key` / `base_url`) first,
+falling back to the `ANTHROPIC_AUTH_TOKEN` / `ANTHROPIC_API_KEY` / `ANTHROPIC_BASE_URL`
+env vars. `config.ini` is gitignored; copy `config.ini.example`. Never re-read these
+env vars in a demo file — import from `llm.py`.
 
 ## implementation-notes.md（必须同步）
 

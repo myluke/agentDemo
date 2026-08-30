@@ -9,25 +9,19 @@
 - RunnableBranch：按 (条件, 分支) 依次匹配，命中即走那条分支，末尾是兜底。
 - 分类用阶段 3 的结构化输出：Literal 枚举在类型层面锁死标签，分支比较才安全。
 """
-import os
 from operator import itemgetter
 from typing import Literal
 
-from langchain_anthropic import ChatAnthropic
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableBranch, RunnableParallel, RunnablePassthrough
 from pydantic import BaseModel, Field, ValidationError
 
-_creds = dict(
-    max_tokens=1024,
-    api_key=os.environ.get("ANTHROPIC_AUTH_TOKEN") or os.environ["ANTHROPIC_API_KEY"],
-    base_url=os.environ.get("ANTHROPIC_BASE_URL"),
-)
+from llm import openai_chat
 
-# 回复要写人话，用 Opus；两个分类器只吐一个枚举标签，Haiku 足够且更快更便宜。
-model = ChatAnthropic(model="claude-opus-4-8", **_creds)
-fast = ChatAnthropic(model="claude-haiku-4-5", **_creds)
+# 回复要写人话，用大模型；两个分类器只吐一个枚举标签，mini 足够且更快更便宜。
+model = openai_chat(max_tokens=1024)
+fast = openai_chat("gpt-5.4-mini", max_tokens=1024)
 
 
 class Sentiment(BaseModel):

@@ -13,23 +13,16 @@ core 里没有未弃用的替代。这里只借它一件事——用 checkpointe
 - checkpointer（InMemorySaver）：每轮结束把状态存下来，下一轮自动读回。
 - thread_id：不同 thread_id 各自独立记忆，互不串（多用户/多会话隔离）。
 """
-import os
 
-from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import START, MessagesState, StateGraph
 
+from llm import openai_chat
+
 # 与前四个 demo 同款：走自定义网关，不用官方骨架里的 init_chat_model。
-model = ChatAnthropic(
-    model="claude-opus-4-8",
-    max_tokens=1024,
-    # 推理档位：low | medium | high(默认) | xhigh | max。不写就是 high——最贵那档。
-    # 这个 demo 只是「记住我叫什么」，low 足够，还更快更便宜。
-    reasoning_effort="low",
-    api_key=os.environ.get("ANTHROPIC_AUTH_TOKEN") or os.environ["ANTHROPIC_API_KEY"],
-    base_url=os.environ.get("ANTHROPIC_BASE_URL"),
-)
+# 推理档位由 llm.py 统一压到 low：这个 demo 只是「记住我叫什么」，够用还更快更便宜。
+model = openai_chat(max_tokens=1024)
 
 
 def call_model(state: MessagesState) -> dict:

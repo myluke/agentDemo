@@ -1,0 +1,9 @@
+# 复制为 config.ini 后填写。config.ini 不入库。
+# 留空则回落到环境变量 ANTHROPIC_AUTH_TOKEN / ANTHROPIC_API_KEY / ANTHROPIC_BASE_URL。
+[api]
+api_key =
+base_url =
+# 默认模型，留空则用 gpt-5.4
+model =
+# 推理档位 low|medium|high，留空则用 low
+reasoning_effort =

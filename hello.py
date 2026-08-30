@@ -1,22 +1,14 @@
 """LangChain Hello World: prompt | model | parser（提示词 | 模型 | 解析器）。"""
-import os
-
-# ChatAnthropic：调用 Claude 模型的客户端
-from langchain_anthropic import ChatAnthropic
 # StrOutputParser：把模型返回的消息对象抽成纯字符串
 from langchain_core.output_parsers import StrOutputParser
 # ChatPromptTemplate：用模板拼「系统提示 + 用户输入」的对话
 from langchain_core.prompts import ChatPromptTemplate
 
+# openai_chat：走 OpenAI 协议的客户端，api_key / base_url 统一在 llm.py 里读配置
+from llm import openai_chat
+
 # 1) 创建模型客户端
-model = ChatAnthropic(
-    model="claude-opus-4-8",   # 用哪个模型
-    max_tokens=1024,           # 回复最多生成多少 token
-    # api_key：优先读自定义网关的 ANTHROPIC_AUTH_TOKEN，没有再退回官方的 ANTHROPIC_API_KEY
-    api_key=os.environ.get("ANTHROPIC_AUTH_TOKEN") or os.environ["ANTHROPIC_API_KEY"],
-    # base_url：接口地址，指向自定义网关（不是 Anthropic 默认地址）
-    base_url=os.environ.get("ANTHROPIC_BASE_URL"),
-)
+model = openai_chat(max_tokens=1024)  # max_tokens：回复最多生成多少 token
 
 # 2) 用 | 把三步串成一条链（LCEL 语法）：模板 → 模型 → 取字符串
 #    数据从左往右流：先套模板，再交给模型，最后解析成纯文本

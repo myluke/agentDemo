@@ -5,6 +5,26 @@
 
 ---
 
+## 2026-08-30 — 凭据集中到 llm.py，全量切换 OpenAI 协议
+
+**做了什么**：新增 `llm.py` 统一构造模型客户端并读凭据；`hello.py` / `multi_step_chain.py` / `structured_output.py` / `parallel_branch.py` / `chat_memory.py` / `rag_basic.py` / `rag_hybrid.py` 全部由 `ChatAnthropic` 换成 `openai_chat()`（`ChatOpenAI` + 网关 `/v1`）；requirements 去掉 `langchain-anthropic`。
+
+**为什么这么做**
+
+- 同一段「api_key 二选一 + base_url」在 6 个文件里各抄一遍，换网关要改 6 处。集中到一处后，demo 只声明「我要哪个模型」，凭据是基础设施不是教学内容。
+- 网关同时兑现两套协议，但混着用会让「换模型」这件事分裂成两条路径。统一走 OpenAI 协议后，`openai_chat("gpt-5.4")` 和 `openai_chat("gpt-5.4-mini")` 是同一个调用，各阶段只差模型名。
+
+**边界与坑**
+
+- **配置优先级 config.ini > 环境变量**：`config.ini` 不入库（`.gitignore`），模板见 `config.ini.example`。不建 config.ini 也能跑，回落到原来的 `ANTHROPIC_*` 环境变量（变量名保留，因为网关就是这么发的凭据）。
+- **ini 值带引号必须剥**：configparser 不剥引号，`base_url = "https://..."` 会原样带引号拼进 URL，httpx 报 `UnsupportedProtocol: missing http://`。`_conf()` 里 `.strip().strip("\"'")` 兜住这个坑。
+- **base_url 的 `/v1`**：Anthropic 协议直连根路径，OpenAI 协议要 `/v1`。这个后缀拼在 `openai_chat()` 内部，调用方不该关心。
+- **structured_output.py 的调试钩子换了层级**：`ChatAnthropic` 是 `model._client._client`，`ChatOpenAI` 要走 `model.root_client._client`（root_client 是底层 `openai.OpenAI`，再取它的 httpx 客户端）。调试日志环境变量同步 `ANTHROPIC_LOG` → `OPENAI_LOG`。
+- **`reasoning_effort` 档位表变了**：Anthropic 是 `low|medium|high|xhigh|max`，OpenAI 侧只到 `high`，注释已同步；`chat_memory.py` 用的 `low` 两边都有效。
+- **默认模型 `llm.MODEL`**：`openai_chat()` 不传 model 就用它（`config.ini` 的 `model` 键，默认 `gpt-5.4`），换主力模型改一处。只有真需要小模型的场合才显式传名——`rag_basic` 的复述、`parallel_branch` 的分类器、`rag_hybrid` 的 reranker 用 `gpt-5.4-mini`，这是有意的成本选择，不能被默认值吞掉。
+- **默认推理档位 `llm.EFFORT`**（`config.ini` 的 `reasoning_effort` 键，默认 `low`）：不传就是模型自己的默认档（偏高＝更慢更贵），这些 demo 都是小活，统一压到 low；要深想的场合调用时显式覆盖。
+- 七个 demo 逐个实跑，自检断言全过。
+
 ## 2026-08-30 — RAG 混合检索与重排
 
 **做了什么**：新增 `rag_hybrid.py`，在基础 RAG 上演示 BM25 关键词检索、向量检索、RRF（Reciprocal Rank Fusion）融合和 rerank；更新 `rag_basic.py`，抽出两路共用的字符 bigram 切词函数；同步路线图和阶段 6 笔记。

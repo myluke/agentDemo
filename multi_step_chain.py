@@ -3,19 +3,14 @@
 流程：话题 → [第1步] 生成一个观点 → [第2步] 反驳这个观点
 关键点：第2步的输入来自第1步的输出；一次普通 API 请求只能完成其中一步。
 """
-import os
 
-from langchain_anthropic import ChatAnthropic
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 
-model = ChatAnthropic(
-    model="claude-opus-4-8",
-    max_tokens=1024,
-    api_key=os.environ.get("ANTHROPIC_AUTH_TOKEN") or os.environ["ANTHROPIC_API_KEY"],
-    base_url=os.environ.get("ANTHROPIC_BASE_URL"),
-)
+from llm import openai_chat
+
+model = openai_chat(max_tokens=1024)
 
 # 第1步：就 {topic} 生成一个鲜明的观点
 step1_argue = (

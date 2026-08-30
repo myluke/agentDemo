@@ -7,19 +7,15 @@
 import os
 from typing import Optional
 
-# 开启 Anthropic SDK 调试日志：打印发出的请求体、目标 URL 和响应头。
-os.environ.setdefault("ANTHROPIC_LOG", "debug")
+# 开启 OpenAI SDK 调试日志：打印发出的请求体、目标 URL 和响应头。
+os.environ.setdefault("OPENAI_LOG", "debug")
 
-from langchain_anthropic import ChatAnthropic
 from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field
 
-model = ChatAnthropic(
-    model="claude-opus-4-8",
-    max_tokens=1024,
-    api_key=os.environ.get("ANTHROPIC_AUTH_TOKEN") or os.environ["ANTHROPIC_API_KEY"],
-    base_url=os.environ.get("ANTHROPIC_BASE_URL"),
-)
+from llm import openai_chat
+
+model = openai_chat(max_tokens=1024)
 
 def print_raw_response(response):
     response.read()
@@ -27,7 +23,8 @@ def print_raw_response(response):
     print(response.text)
 
 
-model._client._client.event_hooks["response"].append(print_raw_response)
+# root_client 是底层 openai.OpenAI，_client 是它的 httpx 客户端
+model.root_client._client.event_hooks["response"].append(print_raw_response)
 
 # schema 即契约：字段名、类型、Field 描述都会喂给模型，指导它怎么填。
 class JobPosting(BaseModel):
@@ -47,7 +44,7 @@ class JobPosting(BaseModel):
     )
 
 
-# 本版本还可选 method="json_schema"（Anthropic 原生），但当前自定义网关不兑现该约束，
+# 本版本还可选 method="json_schema"（OpenAI 原生结构化输出），但当前自定义网关不兑现该约束，
 # 会返回自定义键导致校验失败；故显式选用 function_calling（也是本版本默认值）。
 # 两种方式都由 with_structured_output 负责生成 schema、解析并校验 Pydantic 对象。
 extract_chain = (
