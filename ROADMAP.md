@@ -37,3 +37,34 @@ LCEL 链——所以阶段 1–7 不是铺垫，是阶段 8 的零件。
 - 第 8 阶段用 **LangGraph** 编排 Agent，不用过时的 `AgentExecutor`/`initialize_agent`。
 - 流式、异步、LangSmith 可观测性不单列，穿插进各 demo 顺带演示。
 - 每完成一阶段：改本表状态为 ✅、移动 `👉`，并在 `implementation-notes.md` 追加记录。
+
+## 为什么用框架？裸写不行吗？
+
+行。`rag_basic.py` 的核心流程翻成 Go 裸写就四步——调 `/v1/embeddings` 拿向量、
+点积排序取 top-k、拼提示词、调 `/v1/chat/completions` 解析 SSE，大概 200 行。
+`InMemoryVectorStore` 就是 list + 余弦相似度，`|` 就是 `__or__` 重载，没有魔法。
+**需求锁死在一条链上，裸写更好**：更快、单二进制、没有 `.venv` 和版本震荡。
+
+框架买到的不是「做不到的能力」，是「不用你写」和「换实现只改一行」：
+
+| 买到 | 本仓库的体现 | 裸写要付的代价 |
+|---|---|---|
+| 接口契约 | `LocalEmbeddings` 继承 `Embeddings`，换真 embedding 只删这一个类，下游 store/retriever/chain 一行不改 | 自己定 interface 不难，难在**别人的实现都按你的 interface 写**；Chroma/PGVector/Qdrant 各是各的形状，每家都要写适配层 |
+| 集成存量 | `RecursiveCharacterTextSplitter` 那套「段落→句→字」逐级降级切，被几万个项目磨过边界 | 中文、Markdown、代码、带表格的 PDF，每种切法都是一个坑，`chunk_overlap` 怎么不劈断句子要自己调 |
+| 横切能力 | 链拼好即得 `.invoke` / `.batch` / `.astream` / `.astream_events`；加 `.with_retry()` / `.with_fallbacks()` 一行 | 流式 + 并发 + 重试 + 超时 + 取消，每条链都要重写一遍编排 |
+| 可观测性 | 一个 `LANGSMITH_TRACING=true`，每一跳的输入输出、token、耗时全录 | 自己埋 trace；多 agent / 工具循环时没这层基本是瞎调 |
+| Agent 循环 | 阶段 7–8 的 tool calling 与自主循环 | 逻辑不难，难在**每家 provider 的 tool_call 格式、并行调用、错误回灌语义都不一样** |
+
+抽象成本是真实的（链里那些 `RunnablePassthrough` 就是抽象税），换来的是
+「今天内存库明天 PGVector、今天 gpt-5.4 明天 claude」只动一行。
+
+**选型分界线**
+- 单条固定链、上线要稳、团队是 Go → 裸写，框架的灵活性你用不上。
+- 要试多种检索/编排组合、要换模型换向量库、要 agent 工具循环 → 用框架，
+  否则裸写到第三个月会长出一个更烂的 LangChain。
+
+Go 生态对应物：`langchaingo`（成熟度远不如 Python 版）、Eino（字节，国内生态更贴）。
+真上 Go 生产：编排层裸写，但别自己发明切分器和 embedding 抽象，那两块抄现成的。
+
+**本仓库为什么用它**：学的是 RAG/Agent 的**形状**，框架把形状显式化了；
+裸写会让形状淹没在 HTTP 和 JSON 解析里。

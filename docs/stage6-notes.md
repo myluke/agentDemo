@@ -244,6 +244,34 @@ demo 用“是否支持海外配送”验证资料缺失路径。它只能降低
 
 本仓库的 [`rag_hybrid.py`](../rag_hybrid.py) 用零依赖 BM25 + `InMemoryVectorStore` + RRF 演示这一步，并用带 `VIP-2049` 的罕见编号验证 BM25 的价值。它和 [`rag_basic.py`](../rag_basic.py) 共用 `bigrams`，确保差异来自检索算法，而不是切词差异。
 
+### 常见误解：向量数据库和 Elasticsearch 是同一个东西吗
+
+不是，但两者的边界正在重叠。它们是上表两路检索各自的**存储载体**：
+
+| | 向量数据库（Milvus / Qdrant / Chroma / FAISS） | Elasticsearch / OpenSearch |
+|---|---|---|
+| 存什么 | 定长浮点向量 + 原文和 metadata | 倒排索引（词 → 文档列表） |
+| 怎么找 | 向量距离最近邻（ANN 近似搜索） | 关键词匹配，用 BM25 打分 |
+| 擅长 | 语义相似：「喵星人」能召回「猫」 | 字面精确：型号 `VIP-2049`、错误码、人名 |
+| 短板 | 生僻专名和编号容易被语义平均掉 | 换一种说法就完全召不回 |
+
+对应到本仓库：
+
+- `rag_basic.py` 的 `LocalEmbeddings` + `InMemoryVectorStore` 是**向量库那一路**的最小版；
+- `rag_hybrid.py` 的 BM25 是 **Elasticsearch 那一路的算法内核**——ES 的默认打分函数就是
+  BM25，这里只是没起一个 ES 服务，直接在内存里跑了同一个公式。
+
+需要留意一个反直觉的点：`LocalEmbeddings` 虽然挂在「向量」这一路，算的却是字面 bigram
+重叠，因此它更像一个手搓的弱化 BM25，而不是真正的语义检索。要看到上表「向量」那一列
+的能力，必须换成真 embedding 模型。
+
+所谓 hybrid RAG，就是把这两类系统并起来再融合排序，各自补对方的短板。
+
+**边界重叠**：ES 8.x 起自带 `dense_vector` 字段和 kNN 检索，一套系统就能跑两路；反过来
+Milvus / Qdrant 也在补 sparse 向量和全文检索。所以选型往往不是「谁能做」，而是「团队
+已经在运维哪一个」——已有 ES 集群就先在 ES 里加向量字段，已有 PostgreSQL 就先上
+pgvector，别为一个 demo 规模的知识库多引入一套需要独立运维的存储。
+
 ### 为什么还需要 rerank
 
 召回和精排是两个目标：
