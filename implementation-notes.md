@@ -5,6 +5,32 @@
 
 ---
 
+## 2026-08-31 — 补充向量存储与 FAISS/Milvus 边界
+
+**做了什么**：在阶段 6 笔记中补充向量记录、近邻检索和 ANN 索引的职责，并区分 FAISS、Milvus、Chroma、pgvector 与内存向量存储的定位和适用场景。
+
+**为什么这么做**：FAISS 常被笼统称作“向量数据库”，但它实际是进程内向量检索库；Milvus 才是提供持久化、metadata 过滤、服务化和分布式能力的向量数据库。明确边界后，能避免把 embedding、索引算法和数据库能力混为一谈，也避免教学 demo 过早引入独立基础设施。
+
+**边界**：所有这些工具只负责存储和近邻搜索，不能替代 embedding 模型；已有 PostgreSQL 或 Elasticsearch 时应优先复用 pgvector 或 dense_vector/kNN，规模和运维需求超出已有系统后再引入 Milvus 等独立服务。
+
+---
+
+## 2026-08-31 — LangSmith 可观测性独立为阶段 7
+
+**做了什么**：将 LangSmith tracing 从“各 demo 顺带演示”提升为独立阶段 7，原工具调用和 Agent 顺延为阶段 8、9；路线图增加配置、trace 层级、标签/metadata、故障与耗时定位、隐私边界及完成标准。
+
+**为什么这么做**
+- tracing 不只是环境变量开关；要真正用于调试，必须会读父子 run、区分模型与检索耗时，并从错误节点还原输入输出。
+- 在工具调用和 Agent 循环之前学习可观测性，后续面对多步执行时已有定位手段，不必靠终端日志猜测。
+- 单独使用 `OPENAI_LOG=debug` 只能观察底层 SDK/HTTP 日志，不能替代 LangChain 运行图、步骤级耗时和 token 统计。
+
+**边界 / 安全**
+- tracing 是旁路观测能力，关闭后不得改变链的业务结果；自检不能依赖 LangSmith 网页或远端 trace 已上传。
+- Prompt、响应、检索片段和 metadata 都可能离开本机；密钥不得写入 tags/metadata，个人或业务敏感数据上线前必须考虑脱敏、采样、访问权限和保留策略。
+- `LANGSMITH_TRACING=true` 只负责启用追踪；远端上传还依赖有效的 API key、endpoint/project 配置和网络。
+
+---
+
 ## 2026-08-30 — 凭据集中到 llm.py，全量切换 OpenAI 协议
 
 **做了什么**：新增 `llm.py` 统一构造模型客户端并读凭据；`hello.py` / `multi_step_chain.py` / `structured_output.py` / `parallel_branch.py` / `chat_memory.py` / `rag_basic.py` / `rag_hybrid.py` 全部由 `ChatAnthropic` 换成 `openai_chat()`（`ChatOpenAI` + 网关 `/v1`）；requirements 去掉 `langchain-anthropic`。

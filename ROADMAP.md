@@ -8,12 +8,12 @@
 | 谁决定走向 | 你写死（`\|`、`RunnableBranch`） | 模型自己决定（下一步调哪个工具、还调不调） |
 | 状态 | 每步的输入输出，链结束即丢 | 显式 `State`，跨节点累积、可持久化、可中断恢复 |
 | 适合 | 步骤已知的流水线：翻译→润色、RAG 问答 | 步骤未知的循环：Agent 反复「思考→调工具→看结果」直到收工 |
-| 本仓库 | 阶段 1–4、6–7；阶段 5 是记忆例外 | 阶段 5 的 checkpointer、阶段 8 的 Agent |
+| 本仓库 | 阶段 1–4、6、8；阶段 5 是记忆例外 | 阶段 5 的 checkpointer、阶段 9 的 Agent |
 
 一句话：**LangChain 是「链」，你规定顺序；LangGraph 是「图」，模型规定顺序。**
 
 LangGraph 不是 LangChain 的替代品，是它的上层编排。图里每个节点装的仍然是
-LCEL 链——所以阶段 1–7 不是铺垫，是阶段 8 的零件。
+LCEL 链——所以前 8 阶段不是铺垫，是阶段 9 的零件。
 
 历史包袱：老教程里的 `AgentExecutor` / `initialize_agent` 是 LangGraph 之前
 的 Agent 方案，黑盒、难调试、无法中断，已不推荐，本仓库不用。
@@ -29,13 +29,26 @@ LCEL 链——所以阶段 1–7 不是铺垫，是阶段 8 的零件。
 | 4 | 并行 & 分支 | `RunnableParallel` 并发、`RunnableBranch` 条件分流 | `parallel_branch.py` | ✅ |
 | 5 | 记忆 / 多轮 | `MessagesState`、checkpointer、`thread_id` | `chat_memory.py` | ✅（例外用 LangGraph） |
 | 6 | 检索 (RAG) | 加载→切分→向量化→检索→喂给模型；混合检索 + 重排 | `rag_basic.py` / `rag_hybrid.py` | ✅ |
-| 7 | 工具调用 | 给模型挂工具（function calling），模型自己决定调不调 | `tools.py` | 👉 下一步 |
-| 8 | Agent | 用 **LangGraph** 编排能自主循环、选工具的 Agent | `agent_graph.py` | ⬜ |
+| 7 | LangSmith 可观测性 | Trace 层级、项目/标签、耗时与 token、错误定位、敏感数据边界 | `langsmith_tracing.py` | 👉 下一步 |
+| 8 | 工具调用 | 给模型挂工具（function calling），模型自己决定调不调 | `tools.py` | ⬜ |
+| 9 | Agent | 用 **LangGraph** 编排能自主循环、选工具的 Agent | `agent_graph.py` | ⬜ |
+
+## 阶段 7 实练：LangSmith 可观测性
+
+目标不是“打开一个开关”，而是能从 trace 回答：**哪一步慢、哪一步错、模型实际看到了什么**。
+
+1. 配置 `LANGSMITH_TRACING=true`、`LANGSMITH_API_KEY`、`LANGSMITH_PROJECT`，运行现有 LCEL 链并在 LangSmith 找到对应 trace。
+2. 在 `langsmith_tracing.py` 中给一次运行添加 `run_name`、`tags` 和 `metadata`，识别 chain、retriever、model 的父子层级。
+3. 运行成功和故意失败各一次，对比各步骤的输入输出、耗时、token、错误位置；用项目、标签和时间范围筛选。
+4. 关闭 tracing 后再次运行，确认业务结果不依赖 LangSmith；总结 tracing 与本地 `OPENAI_LOG=debug` 的边界。
+5. 检查隐私边界：不上传密钥和个人数据；生产接入前配置脱敏、采样与保留策略。
+
+**完成标准**：能用 trace 定位一次慢调用和一次失败调用；能解释 `LANGSMITH_TRACING` 与 `OPENAI_LOG` 的区别；demo 带不依赖网络 UI 的最小自检。
 
 ## 约定
-- 第 5 阶段因 LangChain core 的消息历史封装已弃用，例外使用 LangGraph checkpointer；阶段 6–7 仍以 LCEL 为主。
-- 第 8 阶段用 **LangGraph** 编排 Agent，不用过时的 `AgentExecutor`/`initialize_agent`。
-- 流式、异步、LangSmith 可观测性不单列，穿插进各 demo 顺带演示。
+- 第 5 阶段因 LangChain core 的消息历史封装已弃用，例外使用 LangGraph checkpointer；阶段 6、8 仍以 LCEL 为主。
+- 第 9 阶段用 **LangGraph** 编排 Agent，不用过时的 `AgentExecutor`/`initialize_agent`。
+- 流式、异步仍穿插进各 demo；LangSmith 可观测性独立为阶段 7，先学会观察，再进入工具调用和 Agent 循环。
 - 每完成一阶段：改本表状态为 ✅、移动 `👉`，并在 `implementation-notes.md` 追加记录。
 
 ## 为什么用框架？裸写不行吗？
