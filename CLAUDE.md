@@ -7,7 +7,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 A staged LangChain learning repository. Stages 1–4 cover LCEL basics, sequential
 chains, structured output, and parallel/branch workflows; stage 5 covers multi-turn
 memory with a LangGraph checkpointer as the one deliberate exception to the LCEL
-sequence; stage 6 covers RAG — basic pipeline plus hybrid retrieval and reranking, all against the gateway via `langchain-openai` (OpenAI protocol).
+sequence; stage 6 covers RAG — basic pipeline plus hybrid retrieval and reranking; stage 7 covers
+tracing/observability (local `collect_runs` run trees, LangSmith upload optional); stage 8
+covers tool calling with a hand-written tool loop; stage 9 wraps that loop in a LangGraph
+ReAct graph with a checkpointer. All against the gateway via `langchain-openai` (OpenAI protocol).
+
+Demos import each other on purpose: `tools.py` reuses `rag_basic.py`'s retriever,
+`agent_graph.py` reuses `tools.py`'s tools and bound model.
 
 ## Run
 
@@ -19,6 +25,9 @@ sequence; stage 6 covers RAG — basic pipeline plus hybrid retrieval and rerank
 .venv/bin/python chat_memory.py
 .venv/bin/python rag_basic.py
 .venv/bin/python rag_hybrid.py
+.venv/bin/python langsmith_tracing.py
+.venv/bin/python tools.py
+.venv/bin/python agent_graph.py
 pip install -r requirements.txt    # rebuild deps on a fresh machine
 ```
 

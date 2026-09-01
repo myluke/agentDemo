@@ -91,7 +91,7 @@ curl https://api.anthropic.com/v1/messages \
 
 模型不直接执行工具，只返回一个 `tool_use` 块告诉你「我想调 `get_weather("北京")`」；
 **你在自己的代码里执行**，再把结果作为 `tool_result` 发回去，模型接着说话。
-这就是本仓库阶段 7 要练的东西。
+这就是本仓库阶段 8 要练的东西。
 
 ### 提示缓存
 
@@ -252,7 +252,7 @@ curl https://api.anthropic.com/v1/sessions \
   -d '{"agent":"agent_abc123"}'
 ```
 
-**和本仓库阶段 8 的关系**：阶段 8 用 LangGraph 自己编排 Agent 循环，机器是你的；
+**和本仓库阶段 9 的关系**：阶段 9 用 LangGraph 自己编排 Agent 循环，机器是你的；
 Managed Agents 是把循环和机器都交给 Anthropic。两条路解决同一个问题，选哪条看你
 想不想自己运维。
 

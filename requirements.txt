@@ -2,9 +2,11 @@
 # 升级时手动改这里的数字，跑一遍所有 demo 的自检再提交。
 langchain-openai==1.6.0        # ChatOpenAI，走网关的 OpenAI 协议（llm.py）
 langchain-text-splitters==1.1.2  # 阶段 6 的 RecursiveCharacterTextSplitter
-langgraph==1.2.11              # 阶段 5 checkpointer、阶段 8 Agent
+langgraph==1.2.11              # 阶段 5 checkpointer、阶段 9 Agent（ToolNode/tools_condition）
 numpy==2.5.2                   # InMemoryVectorStore 内部算余弦相似度要它
 # 传递依赖，写出来是因为 API 直接用到：langchain-core（Runnable/prompt/parser）、
-# pydantic（阶段 3 结构化输出的 schema）
+# pydantic（阶段 3 结构化输出的 schema）、langsmith（阶段 7 的 collect_runs 走 core，
+# 上传到网页才用到 langsmith 本体）
 langchain-core==1.6.1
 pydantic==2.13.4
+langsmith==0.11.2

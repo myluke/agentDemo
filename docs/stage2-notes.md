@@ -66,7 +66,7 @@ result = full_chain.invoke({"topic": topic})  # 只调一次完整链
 
 - 输入必须含 `topic`；输出含 `topic`、`opinion`、`rebuttal` 三个键。
 - 两步**串行**、第 2 步依赖第 1 步；任一步失败整条链失败。
-- 这是**固定流程的 workflow**，步骤写死；不是会自主选步骤/工具的 Agent（那是阶段 8）。
+- 这是**固定流程的 workflow**，步骤写死；不是会自主选步骤/工具的 Agent（那是阶段 9）。
 
 ---
 

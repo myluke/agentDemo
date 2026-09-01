@@ -19,7 +19,7 @@ LCEL 里做消息历史的现成封装是 `RunnableWithMessageHistory`，但它�
 
 所以阶段 5 破例提前借用 LangGraph，但**只借一件事**：用 checkpointer 按
 `thread_id` 存取消息历史。循环、条件跳转、工具、自主决策一律不碰——那些是
-阶段 8 的内容。阶段 6–7 仍回到 LCEL。
+阶段 9 的内容。阶段 6–8 仍回到 LCEL。
 
 ## 三件套
 
@@ -97,10 +97,10 @@ graph.invoke({"messages": [HumanMessage("我叫 Luke")]},
 demo 阶段用 `InMemorySaver` 是对的：不引依赖、不产生文件、跑完即净。
 等真要跨进程/重启保留再换。
 
-## 和阶段 8 的关系
+## 和阶段 9 的关系
 
 这里的 `StateGraph` / `MessagesState` / `checkpointer` / `thread_id` 不是
-阶段 5 的一次性道具，正是阶段 8 完整 Agent 的零件。阶段 8 会在此基础上加
+阶段 5 的一次性道具，正是阶段 9 完整 Agent 的零件。阶段 9 会在此基础上加
 条件边和工具节点，让图**循环**（思考→调工具→看结果→再思考）。阶段 5 先把
 "带记忆的一步"跑通。
 

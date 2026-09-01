@@ -5,6 +5,53 @@
 
 ---
 
+## 2026-09-01 — 阶段 7/8/9 一次交付：可观测性、工具调用、Agent
+
+**做了什么**：新增 `langsmith_tracing.py`（阶段 7）、`tools.py`（阶段 8）、
+`agent_graph.py`（阶段 9），路线图三阶段全部标 ✅；requirements 补 `langsmith`；
+CLAUDE.md 补运行命令与 demo 间的 import 依赖。
+
+**为什么这么做**
+
+- **阶段 7 用 `collect_runs()` 而不是「配 key 看网页」**：路线图的完成标准要求
+  「demo 带不依赖网络 UI 的最小自检」。`collect_runs()` 拿到的是**同一棵 run 树**
+  （`LANGSMITH_TRACING` 只决定它上不上传），所以层级、耗时、token、错误节点这四件
+  要学的东西全能在本地断言。要看网页版只需设三个环境变量，代码一行不改。
+- **阶段 8 手写循环而不是直接上 `create_react_agent`**：ReAct 的全部内容就是
+  「tool_calls → 执行 → ToolMessage 回灌」。先手写一遍看清消息形状，阶段 9 换成
+  `ToolNode` 时才知道预制件替掉的是哪几行；反过来先上预制件，循环就成了黑盒。
+- **demo 之间直接 import 复用**：`tools.py` 的 `search_policy` 直接 import
+  `rag_basic` 的 retriever，`agent_graph.py` 直接 import `tools` 的 `TOOLS` 和已
+  bind 的 model。这是有意的——教学价值恰恰在「阶段 6 的检索器原样成为阶段 8 的
+  工具、阶段 8 的工具原样进阶段 9 的图」，复制一份会把这条线索抹掉。
+  代价：import `rag_basic` 会执行它的模块级建库（切分 + 向量化），本地实现，
+  毫秒级，可接受。
+
+**边界与坑**
+
+- **tracing 是旁路**：`LANGSMITH_TRACING` 默认在 `langsmith_tracing.py` 里
+  `setdefault("false")`，没有 key 也跑得通；自检显式断言它是 `false`，
+  「关掉上传业务结果照常」这件事本身就被测住了。
+- **`run.error` 带完整 traceback**：打印时要截到第一行之前，否则 run 树被整段
+  traceback 冲垮。walk() 里按 `Traceback` 切。
+- **token 的位置**：只有 `run_type == "llm"` 的 run 有，且在
+  `outputs["llm_output"]["token_usage"]`（`prompt_tokens` / `completion_tokens`）。
+  chain 节点没有，别在父节点上找。
+- **`max_turns` 不是可选装饰**：工具报错时模型很容易反复重试，没有上限就是无限
+  循环烧 token。阶段 8 手写循环和阶段 9 的图都需要这个护栏（图那边靠
+  `recursion_limit`，默认 25）。
+- **`tool_call_id` 必须对上**：一次响应可能带多个 tool_call（并行调用），每个都要
+  回一条 ToolMessage，模型靠 id 把结果和调用单配对，漏一条下一跳就报错。
+- **system 提示不进 state**：`agent_graph.py` 的 `agent()` 每次现拼
+  `[SYSTEM] + state["messages"]`。存进 state 会被 checkpointer 跟着消息历史反复
+  持久化，且多轮后可能被截断策略误伤。
+- **图成环的判据**：自检直接读 `graph.get_graph().edges` 断言存在
+  `("tools", "agent")` 这条回边——没有它就退化成单向链，Agent 名存实亡。
+- **网关行为已验证**：`bind_tools` 的 tool_call 格式、并行调用、闲聊时不调工具，
+  三个 demo 实跑，自检断言全过。
+
+---
+
 ## 2026-08-31 — 补充向量存储与 FAISS/Milvus 边界
 
 **做了什么**：在阶段 6 笔记中补充向量记录、近邻检索和 ANN 索引的职责，并区分 FAISS、Milvus、Chroma、pgvector 与内存向量存储的定位和适用场景。

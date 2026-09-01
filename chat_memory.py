@@ -3,10 +3,10 @@
 多轮记忆的本质，阶段 2 那节「为什么不用 ai 消息」已经埋了伏笔：
 把过去的 human/ai 消息作为**消息**再喂回模型，模型才有上下文。
 
-本阶段例外用 **LangGraph**（阶段 8 才正式讲），原因见 ROADMAP：
+本阶段例外用 **LangGraph**（阶段 9 才正式讲），原因见 ROADMAP：
 LCEL 里干这件事的 `RunnableWithMessageHistory` 已被官方弃用并指向 LangGraph，
 core 里没有未弃用的替代。这里只借它一件事——用 checkpointer 按 thread_id
-存取消息历史，**不碰**循环/工具/自主决策（那些留到阶段 8）。
+存取消息历史，**不碰**循环/工具/自主决策（那些留到阶段 9）。
 
 关键三件套：
 - MessagesState：内置 add_messages reducer，节点返回的消息自动累加进历史。
@@ -35,7 +35,7 @@ def call_model(state: MessagesState) -> dict:
 
 
 # 一个最小的状态图：START → call_model。图只跑一步，不循环——
-# 循环、条件跳转是阶段 8 的内容，这里只要「带记忆的一步」。
+# 循环、条件跳转是阶段 9 的内容，这里只要「带记忆的一步」。
 builder = StateGraph(MessagesState)
 builder.add_node(call_model)
 builder.add_edge(START, "call_model")
