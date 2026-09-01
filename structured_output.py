@@ -44,8 +44,9 @@ class JobPosting(BaseModel):
     )
 
 
-# 本版本还可选 method="json_schema"（OpenAI 原生结构化输出），但当前自定义网关不兑现该约束，
-# 会返回自定义键导致校验失败；故显式选用 function_calling（也是本版本默认值）。
+# 注意：ChatOpenAI 把 method 的默认值覆写成了 "json_schema"（基类 BaseChatOpenAI 才是
+# function_calling），而当前自定义网关不兑现 response_format 约束，会返回自定义键导致校验失败。
+# 所以这个 method= 不是装饰，是必须显式写死的——不传就踩坑。
 # 两种方式都由 with_structured_output 负责生成 schema、解析并校验 Pydantic 对象。
 extract_chain = (
     ChatPromptTemplate.from_messages(

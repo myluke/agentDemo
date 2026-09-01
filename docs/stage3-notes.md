@@ -2,6 +2,11 @@
 
 配套代码：[`structured_output.py`](../structured_output.py)
 
+> **provider 变更提示**：本篇初稿写于 demo 还用 `ChatAnthropic` 直连 `/v1/messages` 时。
+> 现在 `structured_output.py` 走 `llm.py` 的 `openai_chat()` → **`ChatOpenAI`**，
+> 打的是 `POST /v1/chat/completions`。§3–§8、§11 已按 OpenAI 协议改写；
+> §9–§10、§13–§15 讲的是两家协议对比与国产网关通病，本身仍成立，保留。
+
 ---
 
 ## 1. `__main__` 里的两行 `assert` 是测试用例吗？
@@ -71,8 +76,9 @@ model.with_structured_output(JobPosting, method="function_calling", include_raw=
 | `raw` | 解析前的完整 `AIMessage` |
 | `parsing_error` | 解析异常，成功时为 `None` |
 
-注意 `raw.content` 在 `function_calling` 下不是文本，而是 `tool_use` 块——结构化结果在
-`raw.tool_calls[0]["args"]`（或底层 `raw.content[0]["input"]`），两者内容相同，业务代码用前者。
+注意 `raw.content` 在 `function_calling` 下是**空字符串**——模型这一跳没打算说人话，
+结构化结果全在 `raw.tool_calls[0]["args"]` 里。换成 `json_schema` / `json_mode` 则相反：
+`tool_calls` 是空列表，JSON 文本在 `content` 里。**先确认走的哪条通道，再去对应的地方捞数据。**
 
 ---
 
@@ -82,7 +88,7 @@ model.with_structured_output(JobPosting, method="function_calling", include_raw=
 
 ```text
 网关原始 HTTP JSON
-      ↓ ChatAnthropic 转换
+      ↓ ChatOpenAI 转换
 LangChain AIMessage        ← include_raw=True 看到的是这层
       ↓ with_structured_output 解析
 JobPosting 对象
@@ -94,50 +100,70 @@ JobPosting 对象
 - `tool_calls`：LangChain 从 `content` 提取出的统一格式，所以看起来和 `content` 重复。
 - `response_metadata` / `usage_metadata`：整理后的模型标识、停止原因、token 用量。
 
-本机实测响应里有个值得注意的细节：
+本机实测（`base_url = https://helm.easymeta.au/v1`）：
 
 ```json
-"model": "gpt-5.6-sol",
-"model_provider": "anthropic"
+"model": "gpt-5.6-terra",
+"model_provider": "openai"
 ```
 
-说明自定义 `ANTHROPIC_BASE_URL` 网关实际转发到了别的模型，但仍按 Anthropic 协议应答，所以
-`ChatAnthropic` 能正常适配。这也解释了为什么原生 `json_schema` 在这里不兑现约束。
+`config.ini` 里配的模型名会被网关照单转发。注意这里的 `model_provider` 只是 LangChain
+按客户端类型打的标签，**不代表背后真是 OpenAI 的机器**——网关转发到什么模型、兑现哪些
+参数，只能靠实测（见 §6）。
 
 ---
 
 ## 5. 怎么看到更底层的请求？
 
-设环境变量即可，SDK 自带（`structured_output.py` 已用 `os.environ.setdefault` 固化）：
+设环境变量即可，SDK 自带（`structured_output.py` 已用 `os.environ.setdefault` 固化）。
+**注意换 provider 就要换变量名**——`ChatOpenAI` 底下是 openai SDK，只认 `OPENAI_LOG`：
 
 ```python
-os.environ.setdefault("ANTHROPIC_LOG", "debug")
+os.environ.setdefault("OPENAI_LOG", "debug")   # 曾经是 ANTHROPIC_LOG
 ```
 
 或临时开，不改代码：
 
 ```bash
-ANTHROPIC_LOG=debug .venv/bin/python structured_output.py
+OPENAI_LOG=debug .venv/bin/python structured_output.py
 ```
 
-实测输出（删节）：
+实测发出的请求体（`function_calling`，删节）：
 
+```json
+{
+  "model": "gpt-5.6-terra",
+  "max_completion_tokens": 1024,
+  "reasoning_effort": "low",
+  "parallel_tool_calls": false,
+  "tool_choice": {"type": "function", "function": {"name": "JobPosting"}},
+  "tools": [{"type": "function", "function": {
+      "name": "JobPosting",
+      "description": "一条招聘信息里抽取出的关键字段。",
+      "parameters": {"type": "object", "properties": {...}, "required": [...]}}}],
+  "stream": false
+}
+```
 ```text
-DEBUG Request options: {'method': 'post', 'url': '/v1/messages',
-  'json_data': {'max_tokens': 1024, 'model': 'claude-opus-4-8',
-   'tool_choice': {'type': 'tool', 'name': 'JobPosting'},
-   'tools': [{'name': 'JobPosting', 'input_schema': {...}}]}}
-DEBUG Sending HTTP Request: POST https://helm.easymeta.au/v1/messages
-INFO  HTTP Request: POST ... "HTTP/1.1 200 OK"
-DEBUG HTTP Response: ... Headers({'x-helm-request-id': '1df3a1ac-...', ...})
+POST https://helm.easymeta.au/v1/chat/completions
 ```
 
-能看到三件之前看不到的事：LangChain 把 `JobPosting` 编译成的 `tools` + `tool_choice`
-请求体、真实打到的网关地址、网关响应头。
+三个之前看不到的细节，都能在这里对上：
 
-**边界**：debug 日志**不打印响应 body**（只有响应头）。所以「未经 LangChain 处理的原始响应
-JSON」这层，SDK 日志给不到，`include_raw` 的 `AIMessage` 已是最接近的东西。真要 wire-level
-body 得挂 httpx2 钩子或 mitmproxy，学习目的不值得。
+- `max_tokens=1024` 传进 `openai_chat()`，出去变成了 **`max_completion_tokens`**（§9 的差异表）。
+- `reasoning_effort: "low"` 是 `llm.py` 里 `EFFORT` 的默认值，不是这个 demo 写的。
+- `parallel_tool_calls: false` 是 `with_structured_output` 自己加的——只要一张表，
+  不许模型并行调多次。
+
+**比 SDK 日志更好用的办法**：`structured_output.py` 里已经挂了 httpx 钩子，
+直接拿到响应 body（SDK 的 debug 日志只打响应头，不打 body）：
+
+```python
+model.root_client._client.event_hooks["response"].append(print_raw_response)
+```
+
+`root_client` 是底层 `openai.OpenAI`，`._client` 是它的 httpx 客户端。想看请求体就挂
+`event_hooks["request"]`，`json.loads(request.content)` 即可。这是排查网关行为最直接的一层。
 
 **安全**：请求 body 含业务输入和 schema，会进终端日志，生产别常开。
 
@@ -145,57 +171,87 @@ body 得挂 httpx2 钩子或 mitmproxy，学习目的不值得。
 
 ## 6. `method` 有几个？分别干什么？
 
-`ChatAnthropic` 上只有 **2 个**真实选项，外加 1 个会告警的兼容别名。
+`ChatOpenAI` 上是 **3 个**（langchain-openai 1.6.0，`base.py:3723`），走两条不同的通道：
 
-| method | 底层机制 | 请求体 | 返回落在哪 |
+| method | 请求体字段 | 结果落在哪 | 保证什么 |
 |---|---|---|---|
-| `function_calling`（默认） | 强制工具调用 | `tools=[...]` + `tool_choice={"type":"tool","name":"JobPosting"}` | `content` 的 `tool_use` 块 → `tool_calls[0]["args"]` |
-| `json_schema` | Claude 原生结构化输出 | `output_config={"format": {...}}` | 普通 text 块，是一段 JSON 文本 |
-| `json_mode` | 无（别名） | —— | 告警后转成 `json_schema` |
+| `function_calling` | `tools` + `tool_choice` 指名 | `tool_calls[0]["args"]`，`content` 为空 | 模型「尽量」照填，可能漏字段 |
+| `json_schema` | `response_format.json_schema` | `content` 是 JSON 文本，`tool_calls` 为空 | 服务端约束解码，语法上不可能违规 |
+| `json_mode` | `response_format: {"type":"json_object"}` | 同上 | **只保证是合法 JSON，不保证符合 schema** |
 
 - `function_calling` 是「借用」工具调用机制骗模型填参数：schema 伪装成一个叫 `JobPosting`
-  的工具，`tool_choice` 逼它必须调。这就是为什么 `raw.content` 是 `tool_use` 而非文本。
-- `json_schema` 是官方为结构化输出专门做的通道，服务端约束解码，不绕工具。
-- `json_mode` 是给从 OpenAI 迁过来的人的兼容垫片，Anthropic 侧没有对应机制，别用。
+  的工具，`tool_choice` 逼它必须调。**那个函数根本不存在**，args 就是终点，永不执行
+  ——这也是它和阶段 8 真工具调用的唯一区别（详见 [stage8-notes §「回头看阶段 3」](stage8-notes.md)）。
+- `json_schema` 是官方为结构化输出专门做的通道，不绕工具，两者正交（可以同时挂真工具）。
+- `json_mode` 是 `json_schema` 出现前的过渡产物，schema 得自己写进提示词，现在没理由用。
 - 传其他值直接 `ValueError`。
 
-**对本仓库的实际影响**：当前网关（转发到 `gpt-5.6-sol`）不兑现 `output_config.format` 约束，
-`json_schema` 会返回自定义中文键导致校验失败。所以这里选 `function_calling` 不是偏好，是唯一能跑的。
+### 坑一：默认值被覆写了
 
-**日后会踩的坑**：源码里 `function_calling` + `thinking` 启用时会走特殊分支
-（`_get_llm_for_structured_output_when_thinking_is_enabled`）——强制 `tool_choice` 和
-extended thinking 不能共存，LangChain 改成非强制并追加提示词。届时模型可能不调工具，解析会失败。
+**`ChatOpenAI` 把 `method` 默认值改成了 `json_schema`**，只有基类 `BaseChatOpenAI` 才是
+`function_calling`（`base.py:2497` vs `base.py:3723`）。所以 demo 里那个
+`method="function_calling"` 不是装饰，是必须显式写的——不传就默认走进下面这个坑。
 
-**验证方法**：把 method 换成 `json_schema` 再跑一次，debug 日志里 `tools` 会消失、换成 `output_config`。
+### 坑二：本网关不兑现 `response_format`
+
+实测（`gpt-5.6-terra`）：
+
+| method | 结果 |
+|---|---|
+| `function_calling` | ✅ `tool_calls` 正常回填，Pydantic 校验通过 |
+| `json_schema` | ❌ `ValidationError: Invalid JSON`，`content` 是一段 Markdown 招聘启事 |
+| `json_mode` | ⚠️ 是合法 JSON 了，但 `company: null` 撞上 `str` 必填，仍校验失败 |
+
+`json_schema` 的失败形态值得看清楚：网关**没报错**，只是把 `response_format` 静默忽略了，
+模型当成普通对话请求自由发挥，回了段 `**招聘：高级后端...**`。
+**参数被无视和参数被拒绝，表现完全不同**——前者要到 Pydantic 炸了才发现。
+
+`json_mode` 那档说明另一件事：语法保证和 schema 保证是两码事（详见 §14）。
+
+### 坑三：`json_schema` 会改写你的 Optional 语义
+
+`strict=True` 时 LangChain 生成的 schema 里，`min_salary_k` 的 `default: null` 被丢掉，
+字段被强塞进 `required`、外加 `additionalProperties: false`：
+
+```json
+"required": ["title", "company", "remote", "min_salary_k"], "strict": true
+```
+
+「没提到就留空」于是变成「必须显式吐 `null`」。§1 那两行 assert 仍能过，但契约变了。
+
+**验证方法**：挂 §5 那个 request 钩子，换 method 再跑，看 `tools` 和 `response_format` 谁出现。
 
 ---
 
 ## 附：本阶段核心要点（一句话）
 
-`model.with_structured_output(Schema)` 让链直接输出经 Pydantic 校验的对象，省掉「提示模型输出 JSON → 手写 `json.loads` → 逐字段校验」。当前自定义网关不兑现 Anthropic 原生 `json_schema`，故显式用 `method="function_calling"`（也是本版本默认值）。
+`model.with_structured_output(Schema)` 让链直接输出经 Pydantic 校验的对象，省掉「提示模型输出 JSON → 手写 `json.loads` → 逐字段校验」。当前网关不兑现 OpenAI 的 `response_format`，而 `ChatOpenAI` 的默认 method 恰恰是 `json_schema`，**所以必须显式写 `method="function_calling"`**。
 
 ---
 
-## 7. debug 日志里那个 `Request options` 是 Anthropic 官方格式吗？
+## 7. 发出去的请求体是 OpenAI 官方格式吗？
 
-是。`json_data` 就是 `POST /v1/messages` 的合法请求体，逐字段核对：
+是，`POST /v1/chat/completions` 的合法请求体，逐字段核对（实测 body 见 §5）：
 
 | 字段 | 结论 |
 |---|---|
-| `model` / `max_tokens` / `messages` | 三个必填项齐全，`claude-opus-4-8` 是有效 ID |
-| `system` | 顶层字符串形式合法（也可以是 block 数组，用于加 `cache_control`） |
-| `tools[].{name, description, input_schema}` | 标准自定义工具定义，`input_schema` 就是原始 JSON Schema |
-| `tool_choice: {"type":"tool","name":"JobPosting"}` | 强制调用指定工具，即 §6 的 `function_calling` |
+| `model` / `messages` | 两个必填项，模型名由 `config.ini` 决定，网关照单转发 |
+| `max_completion_tokens` | 新字段名。`max_tokens` 已被 OpenAI 废弃，LangChain 自动改写 |
+| `tools[].{type:"function", function:{name, description, parameters}}` | 标准工具定义，注意是**套娃**结构，schema 键叫 `parameters`（Anthropic 那边扁平、叫 `input_schema`，见 §9） |
+| `tool_choice: {"type":"function","function":{"name":"JobPosting"}}` | 强制调用指定工具，即 §6 的 `function_calling` |
+| `parallel_tool_calls: false` | `with_structured_output` 自己加的：只要一张表，不许并行调多次 |
+| `reasoning_effort: "low"` | 来自 `llm.py` 的 `EFFORT`，不是这个 demo 写的 |
 | `min_salary_k` 的 `anyOf + default: null` | Pydantic 生成的 Optional，非 strict 模式下 schema 可自由书写 |
 
-外层的 `files` / `content` / `idempotency_key` / `X-Stainless-*` / `anthropic-user-profile-id`
-都是 SDK 内部的 request options，**不会上线**；值为 `<anthropic.Omit object>` 表示「这个 header
-不发送」。`idempotency_key` 带 `stainless-python-retry-` 前缀说明这次是 SDK 自动重试
+**SDK 内部字段不会上线**：openai SDK 的 debug 日志里那些 `X-Stainless-*` 头、
+`<openai.Omit object>`（表示「这个 header 不发送」）都是 request options 层的东西。
+带 `stainless-python-retry-` 前缀的 `idempotency_key` 说明是 SDK 自动重试
 （默认 `max_retries=2`，对 429/5xx/连接错误重试），排错时别误当成 body 格式问题。
 
-可选加固（当前没做，够用就不动）：给 tool 加 `strict: true`（需 schema 带
-`additionalProperties: false`）保证 `input` 严格符合 schema；或改用原生 `output_config.format`
-——但 §6 已说明本网关不兑现后者。
+可选加固（当前没做）：`with_structured_output(..., strict=True)` 会给 tool 加
+`strict: true` + `additionalProperties: false`，保证入参严格符合 schema。
+但**这同样是服务端能力，本网关既然连 `response_format` 都不兑现，`strict` 也得实测**
+（§12 展开）。
 
 ---
 
@@ -217,9 +273,9 @@ Haiku 4.5 上下文只有 200K。
 - **要用大值必须流式**：`client.messages.stream(...)` + `.get_final_message()`。
 - 本仓库抽取场景 `max_tokens=1024` 足够，调大只是让 `stop_reason: "max_tokens"` 更不可能发生。
 
-**网关注意**：走自定义 `ANTHROPIC_BASE_URL` 时，上限以网关为准（§4 已知实际转发到别的模型）。
-用 `client.models.retrieve("claude-opus-4-8")` 确认：返回的 `max_tokens` 是输出上限，
-`max_input_tokens` 是上下文窗口（没有 `context_window` 这个字段）。
+**这张表说的是 Claude 官方模型**，本仓库走网关转发（§4），上限以网关和实际后端为准，
+只能实测。另外 `openai_chat(max_tokens=1024)` 发出去会变成 `max_completion_tokens`
+（§5、§7）——名字变了，语义不变，仍是单次输出上限。
 
 ### 128000 是文件大小还是字符数？
 
@@ -298,10 +354,14 @@ client.messages.count_tokens(
    `AIMessage` / `tool_calls` 翻译成两套协议——`with_structured_output(JobPosting)`
    一份代码换 provider 就能跑，代价正是 §4 那个「`raw` 不是真正的原始响应」。
 
-2. **本仓库的网关在做协议转换**。它收 Anthropic 格式、转发到 `gpt-5.6-sol`（见 §4），
-   中间必有一层 adapter。这解释了 §6 的现象：`tools` / `tool_choice` 能翻译（两家都有
-   对应概念），但 `output_config.format` 翻不过去（OpenAI 侧叫 `response_format`，
-   语义还不完全等价），所以 `json_schema` 在这里不兑现约束。
+   **本仓库就现场演过一次**：从 `ChatAnthropic` 换成 `ChatOpenAI`，
+   `JobPosting` 和链的写法一个字没动，变的只是底下的请求形状
+   （`input_schema`→`parameters`、`max_tokens`→`max_completion_tokens`）。
+   这篇笔记要大改，业务代码不用——抽象值钱的地方正在这里。
+
+2. **网关只是转发，兑现哪些参数得实测**。§6 的结论是：`tools` / `tool_choice`
+   这类「两家都有对应概念」的能力翻译得过去，`response_format` 这类靠服务端约束解码的
+   直接被静默忽略。这不是某个字段名的问题，是能力层级的问题（§15 有完整的降级顺序）。
 
 ---
 
@@ -346,22 +406,23 @@ prompt caching、`response_format` ↔ `output_config.format`、thinking、并�
 ——行为各不相同甚至直接忽略。
 
 这正是 §6 那个坑的通用版本：**`tools` / `tool_choice` 两家都有对应概念所以能翻译，
-`output_config.format` 没有等价物所以静默失效。** 换任何一个国产网关都会遇到同类问题，
+结构化输出那套（Anthropic 的 `output_config.format` / OpenAI 的 `response_format`）
+没有等价物所以静默失效。** 换任何一个国产网关都会遇到同类问题，
 不是某个网关的 bug，是兼容层的固有边界。
 
-判断方法同 §5：开 `ANTHROPIC_LOG=debug` 看实际发出去什么，再看返回里的 `model` 字段是谁
-——本仓库就是这样抓到 `gpt-5.6-sol` 的（见 §4）。
+判断方法同 §5：开 `OPENAI_LOG=debug`（或挂 httpx 钩子）看实际发出去什么，
+再看返回里的 `model` 字段是谁。
 
-## 11. 返回的 `tool_use` 里为什么"一定"有 `name` / `title` / `remote` 这些字段？
+## 11. 返回的 `tool_calls` 里为什么"一定"有 `name` / `title` / `remote` 这些字段？
 
-看一段实测返回：
+看一段实测返回（LangChain 标准化后的 `raw.tool_calls`）：
 
 ```json
-"content": [{
-  "type": "tool_use",
-  "id": "call_u26dXM72CRVTGKyA4XDWgRUV",
+[{
   "name": "JobPosting",
-  "input": {
+  "id": "call_C2aplw6S2YqAcdNLuXfwrRoU",
+  "type": "tool_call",
+  "args": {
     "title": "高级后端工程师", "company": "", "location": "上海",
     "remote": true, "min_salary_k": 30,
     "skills": ["Python", "PostgreSQL", "Kubernetes"],
@@ -369,6 +430,9 @@ prompt caching、`response_format` ↔ `output_config.format`、thinking、并�
   }
 }]
 ```
+
+（OpenAI 原始响应里是 `choices[0].message.tool_calls[].function.arguments`，
+一段 **JSON 字符串**；LangChain 帮你 `json.loads` 成了上面的 `args`。）
 
 三类字段，三种不同强度的保证，别混为一谈：
 
@@ -378,7 +442,7 @@ prompt caching、`response_format` ↔ `output_config.format`、thinking、并�
 | `title` / `company` / `location` / `remote` / `skills` | 在 schema 的 `required` 里 | schema 锁死（视 strict 而定） |
 | `min_salary_k` / `work_experience` | 不在 `required`，有 `default: null`；原文恰好提到"30k 起""3-5 年" | 模型自愿填的 |
 
-- `tool_choice` 换成 `"auto"`，模型可以选择不调工具、直接回文本，`content` 里就只剩 `text` 块，`tool_calls` 为空——`with_structured_output` 解析会失败（呼应 §6 结尾那个 thinking 的坑）。
+- `tool_choice` 换成 `"auto"`，模型可以选择不调工具、直接回文本，`tool_calls` 为空——`with_structured_output` 解析会失败。这正是 §6 里 `json_schema` 那档的失败形态：**模型自由发挥、客户端才炸**。
 - 可选字段的缺席才是正确行为，正是 §1 那两行 `assert` 守的契约。
 
 ### 坑：`required` 只保证"键存在"，不保证"值有意义"
@@ -395,12 +459,13 @@ company: str | None = Field(None, description="公司名称，文本没提到就
 
 ### `strict` 决定"一定"有多硬
 
-本仓库这次请求是 `"strict": false`：
+本仓库这次请求没传 `strict`（即 `null`，等价于关闭）：
 
 - `strict: true` —— **约束解码**，服务端在生成时把不合 schema 的 token 概率抹零，结构必然合法（代价：schema 要带 `additionalProperties: false`，且部分 JSON Schema 特性不支持）。
 - `strict: false` —— 退化成**强提示 + 事后校验**，绝大多数时候对，极端情况仍可能返回不合 schema 的结构，靠 Pydantic 兜底报错。
 
-要真正的"一定"，把 strict 打开（§7 末尾提到的可选加固就是这件事）。
+要真正的"一定"，把 strict 打开（§7 末尾提到的可选加固就是这件事）——
+**前提是服务端真的实现了它**，本网关连 `response_format` 都不兑现，别想当然。
 
 ---
 
@@ -410,7 +475,7 @@ company: str | None = Field(None, description="公司名称，文本没提到就
 
 **① 请求里能写什么，由服务端契约定。** 请求体不是随便拼的 JSON。`tool_choice` / `strict` / `reasoning.effort` / `verbosity` 都是提供商在 API 文档里声明支持的字段，自己发明一个 `temperature_v2` 上去，只会被忽略或直接 400。§9 那张对照表里两家字段名不同，根源就在这——同一个"工具入参 schema"，Anthropic 叫 `input_schema`，OpenAI 叫 `parameters`。
 
-**② "一定返回这些字段"的保证，也在服务端。** 约束解码是提供商在推理侧实现的，客户端做不到——客户端只能拿到结果后校验、失败重试。所以 §11 那个 `strict` 开关的效力，完全取决于网关/上游是否真的实现了它（§6 已经证明本网关连 `output_config.format` 都不兑现，`strict` 同理要实测）。
+**② "一定返回这些字段"的保证，也在服务端。** 约束解码是提供商在推理侧实现的，客户端做不到——客户端只能拿到结果后校验、失败重试。所以 §11 那个 `strict` 开关的效力，完全取决于网关/上游是否真的实现了它（§6 已经证明本网关连 `response_format` 都不兑现，`strict` 同理要实测）。
 
 **③ LangChain 只是翻译层。** 本仓库写的是一份 Pydantic 模型：
 
@@ -418,7 +483,7 @@ company: str | None = Field(None, description="公司名称，文本没提到就
 model.with_structured_output(JobPosting, method="function_calling")
 ```
 
-内部把它编译成当前 provider 的工具格式塞进请求，再把返回的 `tool_use.input` 反序列化回 Pydantic 对象。换成 `ChatOpenAI`，同一份 `JobPosting` 会被编译成 §9 里那种 `parameters` 形状，业务代码一行不改——这是这层抽象唯一值钱的地方。
+内部把它编译成当前 provider 的工具格式塞进请求，再把返回的工具入参反序列化回 Pydantic 对象。**本仓库已经换过一次**：`ChatAnthropic` → `ChatOpenAI`，`JobPosting` 一行没改，底下从 `input_schema` 变成了 §9 那种 `parameters` 套娃形状——这是这层抽象唯一值钱的地方。
 
 **代价**：provider 独有的能力（Anthropic 的 `thinking`、OpenAI 的 `verbosity`）得靠 `model_kwargs` 透传，抽象就漏出来了。加上 §4 说的"`raw` 已经不是真正的原始响应"——统一抽象换来的可移植性，代价永远是看不清底下发生了什么。
 
@@ -463,11 +528,13 @@ model.with_structured_output(JobPosting, method="function_calling")
 - **通义千问**：`json_schema` 只有 `qwen-plus-latest` 和少数 2025 快照支持，还限北京地域。
 
 **所以 `json_object` 模式下，「约定返回什么字段」靠的是提示词，不是 API 强制。**
-`with_structured_output(..., method="json_mode")` 正是干这个：LangChain 把 schema
-塞进 prompt 当「约定」，拿回文本再用 Pydantic 校验。模型漏字段、类型给错都可能发生，
-`include_raw=True` 的 `parsing_error`（§3）就是这时候的兜底。
+`with_structured_output(..., method="json_mode")` 正是干这个：LangChain 只发
+`response_format: {"type":"json_object"}`，**schema 得你自己写进提示词**，
+拿回文本再用 Pydantic 校验。
 
-一句话：**语法有保证，schema 没有，得自己校验 + 重试。**
+本仓库实测就撞上了（§6 那张表第三行）：返回 `{"title":"高级后端工程师","company":null,...}`
+——语法完全合法，但 `company` 是 `null` 而 schema 里它是必填 `str`，Pydantic 直接报
+`Input should be a valid string`。**语法有保证，schema 没有，得自己校验 + 重试。**
 
 ---
 
@@ -509,12 +576,18 @@ json_object                语法层保证，门槛低 → 基本都有
 json_schema / strict       服务端约束解码     → 几乎翻译不过去
 ```
 
-本仓库的网关（转发到 `gpt-5.6-sol`，见 §4）不兑现 `output_config.format` 不是孤例，
-是这条规律在最右端的必然结果。真要换国产模型，降级顺序是：
+本仓库的网关不兑现 `response_format` 不是孤例，是这条规律在最右端的必然结果——
+**换成 OpenAI 协议直连之后照样不兑现**（§6 实测），可见问题从来不在协议翻译，
+而在后端有没有实现约束解码。
+
+降级顺序：
 
 ```text
-function_calling → json_mode → prompt 塞 schema + PydanticOutputParser
+function_calling → json_mode（schema 写进提示词）→ PydanticOutputParser
 ```
 
-判断当前档位能不能用，方法还是 §5 那套：`ANTHROPIC_LOG=debug` 看实际发出去什么，
-再看返回里的 `model` 字段是谁。
+最后那档完全不依赖服务端特性：`PydanticOutputParser` 把 schema 转成一段格式说明塞进
+提示词，模型吐文本，本地解析 + 校验。任何能说话的模型都能用，代价是最不可靠。
+
+判断当前档位能不能用，方法还是 §5 那套：`OPENAI_LOG=debug` 或 httpx 钩子看实际发出去什么，
+再看回来的东西落在 `tool_calls` 还是 `content`。
