@@ -28,6 +28,7 @@ Demos import each other on purpose: `tools.py` reuses `rag_basic.py`'s retriever
 .venv/bin/python langsmith_tracing.py
 .venv/bin/python tools.py
 .venv/bin/python agent_graph.py
+.venv/bin/python web_agent.py    # http://127.0.0.1:8000
 pip install -r requirements.txt    # rebuild deps on a fresh machine
 ```
 

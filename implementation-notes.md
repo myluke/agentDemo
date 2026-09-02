@@ -5,6 +5,58 @@
 
 ---
 
+## 2026-09-02 — 番外：web_agent.py，把阶段 9 的图挂到 HTTP 上
+
+**做了什么**：新增 `web_agent.py`（FastAPI + 内嵌 HTML，约 130 行），
+`GET /` 返回页面、`POST /chat` 跑一轮 Agent；requirements 补 `fastapi` / `uvicorn`；
+CLAUDE.md 补运行命令；ROADMAP 加「番外」小节（阶段 1–9 状态不动，这不是新阶段）。
+
+**为什么这么做**
+
+- **复用 `agent_graph.ask()` 而不是重建图**：`ask()` 已经封好「invoke + 按 thread_id
+  记忆 + 只返回本轮新增消息」。在 web 层再建一次图等于把阶段 9 抄一遍，而且两份图各有
+  各的 InMemorySaver，终端和网页的记忆会分裂。复用链本身就是这个仓库的教学价值
+  （阶段 6 retriever → 阶段 8 工具 → 阶段 9 图 → 番外的 HTTP 层），复制会把线索抹掉。
+- **`hops()` 的分类照搬 `show()`**：终端里 `show()` 是 print，这里是 JSON，同一份
+  「有 tool_calls / `type=="tool"` / `type=="ai" and content」三分支，两个出口。页面把
+  中间跳也渲染出来是有意的——Agent 的教学重点是「它转了几圈、自己选了什么工具」，
+  只显示最终答案就退化成一个普通问答框。
+- **`/chat` 用同步 `def`**：`ask()` 内部是阻塞的网关 HTTP 调用（秒级）。FastAPI 见到
+  普通 `def` 会丢进线程池，事件循环照常接别的请求；写成 `async def` 却在里面跑阻塞
+  代码，一个人提问就卡死整个服务。「不会 await 就别写 async」在这里是硬规则。
+- **不做流式**：SSE/WebSocket 留作下一步。先让「每一跳可见」成立，流式是体验优化，
+  不改变本 demo 要展示的结构。
+
+**契约**
+
+- `POST /chat` 收 `{"text": str, "thread_id": str}`（pydantic 校验，缺字段或类型不对
+  由 FastAPI 挡成 422），返回 hop 列表，元素三选一：
+  `{"type":"call","name":...,"args":{...}}` / `{"type":"result","content":...}` /
+  `{"type":"answer","content":...}`。顺序即 Agent 的执行顺序。
+- `GET /` 返回内嵌 HTML 字符串（无 static 目录、无模板引擎、无前端框架）。
+
+**thread_id 语义**
+
+- 浏览器端 `crypto.randomUUID()` 生成，存页面变量不落 storage：**刷新即新会话**，
+  两个标签页各记各的——阶段 5 的 thread 隔离在这里变成可操作的实物。
+- 它仍是**分区键不是鉴权**（同阶段 5/9 的警告）：接口没有任何归属校验，谁都能填
+  别人的 id 读到那个 thread 的上下文。真要上线，thread 归属必须服务端鉴权。
+- 记忆在 `InMemorySaver` 里 = 进程内存：**服务重启即失忆**，且多 worker 会让记忆按
+  进程分裂（所以 `uvicorn.run` 单进程、不开 `--reload`、不配 workers）。
+
+**边界与坑**
+
+- **仅本机学习用**：绑 `127.0.0.1`，无鉴权、无限流、无 CORS（同源，不需要）。
+  暴露到公网等于把网关 key 的调用能力和别人的会话历史一起开放。
+- **前端一律 `textContent` 赋值，不用 `innerHTML`**：用户输入和模型输出都是不可信
+  文本，工具结果还可能带 RAG 语料里的内容（阶段 6 笔记里「文档是不可信输入」同款）。
+  拼 HTML 就是一个现成的 XSS。
+- **用 `<form onsubmit>` 而不是监听 keydown**：回车提交是原生行为，白拿。
+- **import `agent_graph` 会连带跑 `tools` → `rag_basic` 的模块级建库**（切分 + 向量化），
+  本地实现毫秒级，所以启动时会有一次静默的建库，属已知代价（见 2026-09-01 条）。
+
+---
+
 ## 2026-09-01 — 阶段 7/8/9 一次交付：可观测性、工具调用、Agent
 
 **做了什么**：新增 `langsmith_tracing.py`（阶段 7）、`tools.py`（阶段 8）、

@@ -10,3 +10,5 @@ numpy==2.5.2                   # InMemoryVectorStore 内部算余弦相似度要
 langchain-core==1.6.1
 pydantic==2.13.4
 langsmith==0.11.2
+fastapi==0.141.1               # 番外 web_agent.py 的 HTTP 层（路由 + 入参校验）
+uvicorn==0.52.4                # 跑 web_agent.py 的 ASGI 服务器

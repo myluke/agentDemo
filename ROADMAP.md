@@ -33,6 +33,17 @@ LCEL 链——所以前 8 阶段不是铺垫，是阶段 9 的零件。
 | 8 | 工具调用 | 给模型挂工具（function calling），模型自己决定调不调 | `tools.py` | ✅ |
 | 9 | Agent | 用 **LangGraph** 编排能自主循环、选工具的 Agent | `agent_graph.py` | ✅ 👉 全部完成 |
 
+## 番外 · `web_agent.py`（Web UI）
+
+不新增阶段，只给阶段 9 的图套一层 HTTP（FastAPI + 内嵌 HTML，`.venv/bin/python
+web_agent.py` 起在 <http://127.0.0.1:8000>）。图、工具、记忆全是现成零件，直接
+`from agent_graph import ask`，一行没重写。
+
+唯一的真变化是 **thread_id 从代码写死变成每个标签页一个**（`crypto.randomUUID()`）：
+刷新即新会话、两个标签页各记各的——阶段 5 讲的 thread 隔离终于有了看得见的实物。
+页面把每一跳（调用 / 结果 / 答）都渲染出来，Agent 不再是只吐最终答案的黑盒。
+边界：无鉴权、无流式，只绑 127.0.0.1，本机学习用。
+
 ## 阶段 7–9 已交付要点
 
 **阶段 7 · 可观测性**（`langsmith_tracing.py`）：`collect_runs()` 把 run 树留在本地，
@@ -57,6 +68,23 @@ docstring 是模型选工具的唯一依据。`max_turns` 是必须的护栏。
 **阶段 9 · Agent**（`agent_graph.py`）：阶段 8 的手写循环交给 `ToolNode` +
 `tools_condition`，加一条 `tools → agent` 的**回边**成环；再挂阶段 5 的 checkpointer
 拿到跨轮记忆。链是无环的、你规定顺序，图有环、模型规定跑几圈——这就是全部区别。
+
+## 后续实验 · 工具规模化（工具多了怎么挂）
+
+阶段 8 是个位数工具全量 `bind_tools`，这个规模下是正确做法。但 tool schema 本身
+占 token，工具越多模型选错越多（经验上超过 ~20–40 个明显退化），1000 个不可能
+全带上。通行做法是分层收敛，**每轮实际绑定控制在 ~20 个以内**：
+
+| 方案 | 思路 | 代价 |
+|---|---|---|
+| 工具检索（RAG over tools） | 工具 name + description 做 embedding 建索引，按用户 query 检索 top-k（5~20 个）再 `bind_tools`；`langgraph-bigtool` 是现成实现 | 检索不准会漏掉该用的工具 |
+| 分层路由（多 agent） | 按领域分组（订单/支付/物流），router 只见组名，选中后进入只挂 10–20 个工具的子 agent | 多一层编排；supervisor 架构的动机之一 |
+| 元工具（meta-tool） | 只暴露 `search_tools(query)` + `call_tool(name, args)`，模型运行时自己发现工具；MCP 的渐进式披露同思路 | 每次用工具多一轮往返 |
+| 静态裁剪 | 把 API 端点的机械映射合并成少量参数化工具——一个 `query_db(table, filter)` 顶 100 个 `get_xxx` | 需要人工设计，但常常最有效 |
+
+注意：工具选择错误的头号原因是 description 含糊（何时用/何时不用没写清），
+不是数量本身。若动手实验，方案 1 可直接复用阶段 6 `rag_basic.py` 的
+retriever 基础设施——和检索文档是同一套东西，只是被检索的对象换成了工具。
 
 ## 约定
 - 第 5 阶段因 LangChain core 的消息历史封装已弃用，例外使用 LangGraph checkpointer；阶段 6、8 仍以 LCEL 为主。
