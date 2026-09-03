@@ -31,6 +31,39 @@ demo 之间**故意互相 import**：`s08_tools.py` 复用 `s06_rag_basic.py` �
 `harness/tools.py` 和主线阶段 8 的 `s08_tools.py` 是两个独立实现。详见
 [harness/README.md](harness/README.md)。
 
+## 文件结构
+
+```
+agentDemo/
+├── llm.py                    # 公共客户端工厂，凭据只在这里读（不编号，非课程内容）
+├── s01_hello.py              # 阶段 1：LCEL 基础
+├── s02_multi_step_chain.py   # 阶段 2：顺序链
+├── s03_structured_output.py  # 阶段 3：结构化输出
+├── s04_parallel_branch.py    # 阶段 4：并行 & 分支
+├── s05_chat_memory.py        # 阶段 5：记忆 / 多轮
+├── s06_rag_basic.py          # 阶段 6：RAG 基础
+├── s06_rag_hybrid.py         # 阶段 6：混合检索 + 重排（同阶段共用编号）
+├── s07_langsmith_tracing.py  # 阶段 7：可观测性
+├── s08_tools.py              # 阶段 8：工具调用
+├── s09_agent_graph.py        # 阶段 9：LangGraph Agent
+├── s10_web_agent.py          # 番外：Web UI 封装（不在阶段表内）
+├── harness/                  # 对照组：无框架裸写 agent 循环，与主线互不 import
+│   ├── harness.py
+│   ├── tools.py              # harness 自己的工具层，与 s08_tools.py 独立
+│   └── README.md
+├── docs/
+│   ├── stage{1..9}-notes.md  # 每阶段详细笔记
+│   ├── api-openai.md         # 网关侧协议记录
+│   └── api-anthropic.md
+├── config.ini.example        # 配置模板（复制为 config.ini，已 gitignore）
+├── requirements.txt          # 版本全部钉死
+├── ROADMAP.md
+├── implementation-notes.md
+└── agent-questions.md
+```
+
+`sNN_` 前缀对应 ROADMAP 阶段号，`ls *.py` 即按学习顺序排列。
+
 ## 运行
 
 ```bash
