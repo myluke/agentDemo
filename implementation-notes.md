@@ -5,6 +5,59 @@
 
 ---
 
+## 2026-09-03 — harness/：不用框架裸写一遍 HTTP agent loop
+
+**做了什么**：新增 `harness/`（`tools.py` ~110 行 + `harness.py` ~165 行 + README），
+只用 `requests` + 标准库实现 agent 循环、工具注册分发、结果回灌、compaction、
+危险工具确认门五件套。零新依赖，不动 requirements。ROADMAP「为什么用框架」节末尾
+加了指向；**不进阶段表**（同 web_agent.py 的番外定位）。
+
+**为什么这么做**
+
+- ROADMAP 那节论证「框架买到的不是能力，是不用你写」，但一直只有文字。裸写一份
+  同形状的实物摆在旁边，读者能直接对比：`ToolNode` 展开就是「遍历 tool_calls、
+  execute、拼 `{"role":"tool"}`」十行，`bind_tools` 展开就是手写一份 JSON Schema。
+  形状没变，省的是抄写。
+- **schema 与执行体同源**：注册表一张表同时存 `fn`/`description`/`parameters`/
+  `dangerous`。分两处放迟早对不上——改了函数签名忘改 schema，模型按旧 schema 传参，
+  炸在运行时。框架用类型注解自动推正是在解这个问题。
+- **不做流式/并发/沙箱**：本 demo 讲 loop 的形状，SSE 会把主线淹没在解析里；
+  并行 tool_calls 串行执行本来就合法，串行更好读。
+
+**契约与安全语义**
+
+- **错误也回灌**：`dispatch()` 用 `except Exception` 把异常转成 `"错误：..."` 字符串。
+  模型看见「文件不存在」能换路径重试；抛异常则整个循环当场炸掉，它永远不知道
+  发生了什么。坏 JSON 参数（模型偶发）同样当工具错误回灌，不崩。
+- **拒绝也回灌**：确认门被拒时**不执行**，但把「用户拒绝了此次工具调用」当作 tool
+  结果塞回去。静默跳过会让模型以为工具没返回，抛异常同上。这是确认门的正确语义：
+  拒绝是一个**结果**，不是一个故障。
+- **EOF 按拒绝处理**：管道输入耗尽时 `input()` 抛 `EOFError`，接住并返回 False。
+  没人回答 ≠ 默许，安全默认必须是拒绝。
+- `run_shell` 无沙箱无白名单，安全边界只有那道确认门，README 写明仅本机学习用。
+
+**两个坑（都真踩了）**
+
+- **`sys.path` 必须用 append 不是 insert(0)**：`python harness/harness.py` 时
+  `sys.path[0]` 是 `harness/`。按常规写 `insert(0, 仓库根)` 会把根排到前面，
+  `import tools` 命中阶段 8 那个（顺带拖进 LangChain + rag_basic），不是本地的。
+  根只需「能被找到」以 import `llm`，所以 append。已验证命中 `harness/tools.py`
+  且 `sys.modules` 里无 langchain。
+- **compaction 不能劈开 tool_calls 配对**：保留尾 8 条时，若切点恰好落在
+  `role:"tool"` 上，它的 assistant(tool_calls) 父消息被切进摘要区 → 孤儿 tool
+  消息 → 网关 400。定好 cut 后 `while messages[cut]["role"]=="tool": cut -= 1`
+  往前退。反向不会发生（tool 结果永远紧跟其 assistant，切前缀不会留下无结果的 assistant）。
+
+**测试时发现并修掉的一个真问题**：SYSTEM 最初写「run_shell 每次调用都需要用户
+当场确认」，模型据此**先用文字问一遍**「是否运行？」，等于两道门，管道输入下还会
+把 `y` 喂给对话而不是确认门，造成误拒。改成「不要用文字请求许可，直接调用，
+本程序会拦下来」——**确认权归 harness 不归模型**，提示词不能把宿主的职责推给模型。
+
+**边界**：无流式、无并发工具、无参数校验；compaction 是「摘要中间段」的朴素策略，
+不做重要性排序。
+
+---
+
 ## 2026-09-03 — web_agent.py：等待响应时显示「正在思考…」占位行
 
 **做了什么**：提交后立即 `add('wait', '正在思考…')` 插入占位行（CSS 闪烁动画），
