@@ -71,6 +71,8 @@ PAGE = """
   #log > div { margin: .5rem 0; white-space: pre-wrap }
   .me { text-align: right; color: #06c }
   .call, .result { color: #999; font: .8rem/1.5 ui-monospace, monospace }
+  .wait { color: #999; animation: blink 1s infinite alternate }
+  @keyframes blink { to { opacity: .3 } }
   form { display: flex; gap: .5rem }
   input { flex: 1; padding: .5rem }
 </style>
@@ -87,6 +89,7 @@ function add(cls, text) {
   d.textContent = text;   // 不用 innerHTML：用户输入和模型输出都是不可信文本
   log.appendChild(d);
   d.scrollIntoView();
+  return d;   // 调用方可留着引用，用于稍后移除（如「正在思考」占位行）
 }
 
 document.getElementById('f').onsubmit = async (e) => {
@@ -95,20 +98,25 @@ document.getElementById('f').onsubmit = async (e) => {
   if (!text) return;
   add('me', text);
   q.value = ''; q.disabled = true;
+  // 占位行：/chat 不是流式，等待期整个页面否则毫无反馈。收到响应后移除。
+  const wait = add('wait', '正在思考…');
   try {
     const r = await fetch('/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text, thread_id: tid }),
     });
+    const data = await r.json();
+    wait.remove();
     // 三种跳分开渲染：调用和结果弱化成灰色小字，答案正常展示。
     // 目的就是让「Agent 转了几圈、调了什么工具」留在页面上，而不是只剩最后一句话。
-    for (const h of await r.json()) {
+    for (const h of data) {
       if (h.type === 'call') add('call', `↳ 调用 ${h.name}(${JSON.stringify(h.args)})`);
       else if (h.type === 'result') add('result', `↳ 结果 ${h.content}`);
       else add('answer', h.content);
     }
   } catch (err) {
+    wait.remove();   // 失败路径同样要清掉占位，否则「正在思考」会永远留在页面上
     add('result', `请求失败：${err}`);
   } finally {
     q.disabled = false; q.focus();
