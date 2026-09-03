@@ -1,6 +1,6 @@
 # 阶段 6 · 检索增强生成（RAG）— 回顾笔记
 
-配套代码：[`rag_basic.py`](../rag_basic.py)
+配套代码：[`s06_rag_basic.py`](../s06_rag_basic.py)
 
 ---
 
@@ -126,7 +126,7 @@ embedding 能**——这就是 RAG 不用 `LIKE '%猫%'` 而用向量库的原�
  你的活    你的活     你的活    接口只管这一步
 ```
 
-`rag_basic.py` 里对应的就是那两行：
+`s06_rag_basic.py` 里对应的就是那两行：
 
 ```python
 splitter = RecursiveCharacterTextSplitter(chunk_size=60, chunk_overlap=15)
@@ -223,7 +223,7 @@ demo 用“是否支持海外配送”验证资料缺失路径。它只能降低
 
 ## 从「跑通」到「能用」：业内私有部署通用方案
 
-`rag_basic.py` 演示的是最小闭环；企业内部知识问答通常把检索部分升级成下面这条流水线：
+`s06_rag_basic.py` 演示的是最小闭环；企业内部知识问答通常把检索部分升级成下面这条流水线：
 
 ```text
 问题 ─┬─ BM25 关键词召回 ─┐
@@ -242,7 +242,7 @@ demo 用“是否支持海外配送”验证资料缺失路径。它只能降低
 
 因此业内常见做法是两路并行召回，再用 **RRF（Reciprocal Rank Fusion）** 按名次合并。两路分数的量纲不同：向量余弦相似度通常在 0～1，BM25 没有固定上限，不能未经归一化就直接相加；RRF 只使用名次，默认不需要为每批语料重新调权重。
 
-本仓库的 [`rag_hybrid.py`](../rag_hybrid.py) 用零依赖 BM25 + `InMemoryVectorStore` + RRF 演示这一步，并用带 `VIP-2049` 的罕见编号验证 BM25 的价值。它和 [`rag_basic.py`](../rag_basic.py) 共用 `bigrams`，确保差异来自检索算法，而不是切词差异。
+本仓库的 [`s06_rag_hybrid.py`](../s06_rag_hybrid.py) 用零依赖 BM25 + `InMemoryVectorStore` + RRF 演示这一步，并用带 `VIP-2049` 的罕见编号验证 BM25 的价值。它和 [`s06_rag_basic.py`](../s06_rag_basic.py) 共用 `bigrams`，确保差异来自检索算法，而不是切词差异。
 
 ### 常见误解：向量数据库和 Elasticsearch 是同一个东西吗
 
@@ -294,8 +294,8 @@ PostgreSQL 就优先考虑 pgvector，已有 Elasticsearch 可直接使用其 `d
 
 对应到本仓库：
 
-- `rag_basic.py` 的 `LocalEmbeddings` + `InMemoryVectorStore` 是**向量库那一路**的最小版；
-- `rag_hybrid.py` 的 BM25 是 **Elasticsearch 那一路的算法内核**——ES 的默认打分函数就是
+- `s06_rag_basic.py` 的 `LocalEmbeddings` + `InMemoryVectorStore` 是**向量库那一路**的最小版；
+- `s06_rag_hybrid.py` 的 BM25 是 **Elasticsearch 那一路的算法内核**——ES 的默认打分函数就是
   BM25，这里只是没起一个 ES 服务，直接在内存里跑了同一个公式。
 
 需要留意一个反直觉的点：`LocalEmbeddings` 虽然挂在「向量」这一路，算的却是字面 bigram
@@ -316,7 +316,7 @@ pgvector，别为一个 demo 规模的知识库多引入一套需要独立运维
 1. **召回（recall）**：候选宁可多一些，确保答案所在的块在候选里；
 2. **重排（precision）**：候选多会稀释重点、增加 token，因此用更精确的模型把候选收敛到少数几块。
 
-生产常用 cross-encoder，例如 `bge-reranker-v2-m3`：它把“问题 + 文块”成对输入，直接判断相关性，比两个独立向量的距离更细。`rag_hybrid.py` 为了不再增加依赖，使用已有的 Claude Haiku 结构化输出，只让它返回候选编号；这是同样的 rerank 接口形状，但成本和延迟通常高于本地 cross-encoder。实际部署应把它替换成自托管 reranker 服务。
+生产常用 cross-encoder，例如 `bge-reranker-v2-m3`：它把“问题 + 文块”成对输入，直接判断相关性，比两个独立向量的距离更细。`s06_rag_hybrid.py` 为了不再增加依赖，使用已有的 Claude Haiku 结构化输出，只让它返回候选编号；这是同样的 rerank 接口形状，但成本和延迟通常高于本地 cross-encoder。实际部署应把它替换成自托管 reranker 服务。
 
 ### 一套常见的私有化组件栈
 
@@ -342,7 +342,7 @@ pgvector，别为一个 demo 规模的知识库多引入一套需要独立运维
 
 - **权限过滤**：按 tenant、部门、角色、文档密级做 metadata filter，且在 BM25 和向量库查询阶段执行；不能先召回全部内容再靠 prompt 防泄露。
 - **来源引用**：每个 chunk 保留文档 ID、版本、页码/段落，回答返回可追溯来源。
-- **不可信文档隔离**：文档可能夹带 prompt injection；检索内容只能作为资料，不能变成系统指令。`rag_hybrid.py` 的 reranker 已做最小示范，生成链仍需在生产环境配合隔离和测试。
+- **不可信文档隔离**：文档可能夹带 prompt injection；检索内容只能作为资料，不能变成系统指令。`s06_rag_hybrid.py` 的 reranker 已做最小示范，生成链仍需在生产环境配合隔离和测试。
 - **可评测调参**：用真实问题集调 `chunk_size`、`overlap`、两路召回数量、RRF 参数和最终 `k`，同时看 recall、答案忠实度、延迟和成本。
 
 **一句话**：私有 RAG 的通用升级不是“换一个更大的模型”，而是“解析好 → dense+sparse 召回 → RRF → rerank → 带引用生成”，再把权限和评测放到检索链路里。

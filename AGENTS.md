@@ -12,13 +12,13 @@ sequence, all against Codex via `langchain-anthropic`.
 ## Run
 
 ```bash
-.venv/bin/python hello.py
-.venv/bin/python multi_step_chain.py
-.venv/bin/python structured_output.py
-.venv/bin/python parallel_branch.py
-.venv/bin/python chat_memory.py
-.venv/bin/python rag_basic.py
-.venv/bin/python rag_hybrid.py
+.venv/bin/python s01_hello.py
+.venv/bin/python s02_multi_step_chain.py
+.venv/bin/python s03_structured_output.py
+.venv/bin/python s04_parallel_branch.py
+.venv/bin/python s05_chat_memory.py
+.venv/bin/python s06_rag_basic.py
+.venv/bin/python s06_rag_hybrid.py
 pip install -r requirements.txt    # rebuild deps on a fresh machine
 ```
 

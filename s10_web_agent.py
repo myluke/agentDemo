@@ -1,7 +1,7 @@
 """Web Agent 演示（番外）：给阶段 9 的图套一层 HTTP，让 Agent 的每一跳在浏览器里可见。
 
 本文件**只加了一层 HTTP**。图、工具、记忆一行没重写：`ask()` 来自阶段 9 的
-`agent_graph`，而它内部又是阶段 8 的工具、阶段 6 的 retriever、阶段 5 的
+`s09_agent_graph`，而它内部又是阶段 8 的工具、阶段 6 的 retriever、阶段 5 的
 checkpointer。九个阶段的零件原样搬上网页——这就是仓库一路复用下来的那条线。
 
 唯一的真变化是 **thread_id 的来源**：阶段 5、9 里它是代码写死的 "demo"，这里改成
@@ -24,7 +24,7 @@ from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
-from agent_graph import ask  # 阶段 9 的图，原样复用：不重建、不复制它的逻辑
+from s09_agent_graph import ask  # 阶段 9 的图，原样复用：不重建、不复制它的逻辑
 
 app = FastAPI()
 
@@ -37,7 +37,7 @@ class Ask(BaseModel):
 
 
 def hops(messages: list) -> list:
-    """把本轮消息翻成前端能渲染的「跳」——分类与 `agent_graph.show()` 完全一致。
+    """把本轮消息翻成前端能渲染的「跳」——分类与 `s09_agent_graph.show()` 完全一致。
 
     终端里 show() 是 print，这里是 JSON：同一份分类逻辑，两个出口。
     """

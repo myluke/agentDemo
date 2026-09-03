@@ -5,6 +5,40 @@
 
 ---
 
+## 2026-09-03 — 课程文件统一加 `sNN_` 阶段前缀
+
+**做了什么**：11 个教程 demo 用 `git mv` 加阶段号前缀——`hello.py` → `s01_hello.py`，
+`multi_step_chain` → `s02_`，`structured_output` → `s03_`，`parallel_branch` → `s04_`，
+`chat_memory` → `s05_`，`rag_basic` / `rag_hybrid` → 同为 `s06_`（同属阶段 6），
+`langsmith_tracing` → `s07_`，`tools` → `s08_`，`agent_graph` → `s09_`，
+`web_agent` → `s10_`（ROADMAP 的番外）。三条跨 demo import 链同步改名；
+CLAUDE.md / ROADMAP.md / README.md / AGENTS.md / agent-questions.md / `docs/*.md`
+的文件名与相对链接全量更新。
+
+**为什么**：文件名不带序号时，`ls` 出来是字母序，看不出学习顺序；查「阶段 7 是哪个
+文件」得回 ROADMAP 对照。前缀让目录列表本身就是路线图。
+
+**为什么是 `s` 前缀而不是纯数字（`01_hello.py`）**：这些 demo **互相 import**——
+`s06_rag_hybrid` → `s06_rag_basic`、`s09_agent_graph` → `s08_tools`、
+`s10_web_agent` → `s09_agent_graph`。Python 标识符不能以数字开头，`01_hello` 不是
+合法模块名，`import 01_hello` 直接 SyntaxError（只能 `importlib` 绕，为了个文件名
+不值得）。`s` 前缀让编号和可 import 两者兼得。
+
+**`llm.py` 不编号**：它不是某一阶段的教学内容，是所有阶段共用的凭据与客户端工厂，
+没有对应的阶段号可给。不编号本身就是「这是基础设施，不是课程」的信号。
+
+**顺带解决的同名冲突**：根目录的 `tools.py` 曾与 `harness/tools.py` 同名不同物，
+`harness/harness.py` 必须用 `sys.path.append`（而非 `insert(0)`）才能保证
+`import tools` 命中本地那个。根文件更名 `s08_tools.py` 后冲突消失，但 `append`
+的语义（根只需「能被找到」以 import `llm`）仍然更准，保留不改，注释改写成历史说明。
+
+**边界**：`harness/` 目录内一律不动——它是主线的对照组，不进阶段表，没有阶段号。
+`harness/tools.py` 保持原名，`harness/harness.py` 的 `from tools import ...` 保持
+指向本地。`config.ini*` 同样不动。本条以下的历史条目里出现的旧文件名不做替换，
+那是当时的事实记录。
+
+---
+
 ## 2026-09-03 — harness/：不用框架裸写一遍 HTTP agent loop
 
 **做了什么**：新增 `harness/`（`tools.py` ~110 行 + `harness.py` ~165 行 + README），

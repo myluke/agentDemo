@@ -1,6 +1,6 @@
 """工具注册表：不依赖任何框架，也不依赖凭据（不 import llm）。
 
-对照阶段 8 的 `tools.py`：那边 `@tool` 装饰器从类型注解和 docstring 自动推 schema，
+对照阶段 8 的 `s08_tools.py`：那边 `@tool` 装饰器从类型注解和 docstring 自动推 schema，
 这边**手写** JSON Schema 塞进注册表。这就是框架替你省掉的那部分——省的是抄写，
 不是能力，形状完全一样。
 

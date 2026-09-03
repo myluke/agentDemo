@@ -42,7 +42,7 @@ def classifier(system: str, schema: type[BaseModel]):
     用 with_structured_output 而不是靠提示词约束格式：Literal 枚举参与工具
     schema，模型填不出表外的值，也就没有 "投诉。" / "类别：投诉" 这类漂移，
     下游 x["category"] == "投诉" 的精确比较才立得住。
-    method 沿用 structured_output.py 的结论：当前网关不兑现 json_schema。
+    method 沿用 s03_structured_output.py 的结论：当前网关不兑现 json_schema。
     """
     return (
         ChatPromptTemplate.from_messages(

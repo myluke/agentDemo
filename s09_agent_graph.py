@@ -15,7 +15,7 @@
 你写死不了——这就是「模型规定顺序」。
 
 零件全是前面阶段的：
-- 工具、模型：阶段 8 的 `tools.py`（含复用阶段 6 retriever 的 search_policy）。
+- 工具、模型：阶段 8 的 `s08_tools.py`（含复用阶段 6 retriever 的 search_policy）。
 - checkpointer + thread_id：阶段 5 的记忆，让 Agent 跨轮记得上文。
 - ToolNode / tools_condition：LangGraph 预制件，等价于阶段 8 手写的
   「遍历 tool_calls 执行、包成 ToolMessage」和「还有没有 tool_calls」判断。
@@ -28,7 +28,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, MessagesState, StateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
 
-from tools import TOOLS, model  # 阶段 8 的工具与已 bind_tools 的模型
+from s08_tools import TOOLS, model  # 阶段 8 的工具与已 bind_tools 的模型
 
 SYSTEM = SystemMessage(
     "你是喵星速递的客服助手。涉及公司政策必须先用 search_policy 查证再回答，"

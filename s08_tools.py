@@ -22,7 +22,7 @@ from langchain_core.messages import HumanMessage, ToolMessage
 from langchain_core.tools import tool
 
 from llm import openai_chat
-from rag_basic import format_docs, retriever  # 阶段 6 的检索器，原样当工具用
+from s06_rag_basic import format_docs, retriever  # 阶段 6 的检索器，原样当工具用
 
 
 @tool

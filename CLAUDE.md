@@ -15,23 +15,26 @@ ReAct graph with a checkpointer. All against the gateway via `langchain-openai` 
 `harness/` sits **outside** the staged track: a framework-free agent harness written
 against the raw HTTP API (see "harness/ 与教程主线的区别" below).
 
-Demos import each other on purpose: `tools.py` reuses `rag_basic.py`'s retriever,
-`agent_graph.py` reuses `tools.py`'s tools and bound model.
+Demos import each other on purpose: `s08_tools.py` reuses `s06_rag_basic.py`'s retriever,
+`s09_agent_graph.py` reuses `s08_tools.py`'s tools and bound model.
+
+课程文件按 `sNN_` 前缀编号，`NN` 即 ROADMAP 的阶段号（阶段 6 有两个 demo，同为 `s06_`）；
+`llm.py` 是公共基础设施，不编号。
 
 ## Run
 
 ```bash
-.venv/bin/python hello.py
-.venv/bin/python multi_step_chain.py
-.venv/bin/python structured_output.py
-.venv/bin/python parallel_branch.py
-.venv/bin/python chat_memory.py
-.venv/bin/python rag_basic.py
-.venv/bin/python rag_hybrid.py
-.venv/bin/python langsmith_tracing.py
-.venv/bin/python tools.py
-.venv/bin/python agent_graph.py
-.venv/bin/python web_agent.py    # http://127.0.0.1:8000
+.venv/bin/python s01_hello.py
+.venv/bin/python s02_multi_step_chain.py
+.venv/bin/python s03_structured_output.py
+.venv/bin/python s04_parallel_branch.py
+.venv/bin/python s05_chat_memory.py
+.venv/bin/python s06_rag_basic.py
+.venv/bin/python s06_rag_hybrid.py
+.venv/bin/python s07_langsmith_tracing.py
+.venv/bin/python s08_tools.py
+.venv/bin/python s09_agent_graph.py
+.venv/bin/python s10_web_agent.py    # http://127.0.0.1:8000
 .venv/bin/python harness/harness.py   # 裸写 harness REPL（教程主线之外，见下节）
 pip install -r requirements.txt    # rebuild deps on a fresh machine
 ```
@@ -45,13 +48,13 @@ pip install -r requirements.txt    # rebuild deps on a fresh machine
 | 依赖 | LangChain / LangGraph / `langchain-openai` | 仅 `requests` + 标准库，零新增 |
 | 调模型 | `llm.py` 的 `openai_chat()` → `ChatOpenAI` | 自拼 `BASE_URL + "/v1/chat/completions"`，`requests.post` 裸发 |
 | 消息 | `AIMessage` / `ToolMessage` 对象 | 原始 dict 进出 |
-| 工具 | `@tool` + `bind_tools` + `ToolNode`（根 `tools.py`） | `@register` 注册表 + `dispatch()`（`harness/tools.py`） |
+| 工具 | `@tool` + `bind_tools` + `ToolNode`（根 `s08_tools.py`） | `@register` 注册表 + `dispatch()`（`harness/tools.py`） |
 | 历史管理 | checkpointer / `trim_messages` | 手写 `compact()` 摘要压缩 |
 | 确认门 | 无 | 危险工具 `[y/N]`，拒绝也回灌 |
 
 改动规则：
 - **两边互不 import**。`harness/` 只从 `llm.py` 取 `API_KEY / BASE_URL / MODEL / EFFORT` 常量，不碰任何 LangChain 对象；教程 demo 也不 import `harness/`。
-- 根目录和 `harness/` 各有一个 `tools.py`，**同名不同物**。在 `harness/` 内跑脚本须 `sys.path.append`（不是 `insert(0)`），否则会劫持到根目录那个。
+- 根目录的工具 demo 已更名 `s08_tools.py`，与 `harness/tools.py` 不再同名，import 劫持的可能性随之消失。`harness/harness.py` 仍用 `sys.path.append`（不是 `insert(0)`）把仓库根加到**末尾**——它只需要根「能被找到」以 import `llm`，保留这个写法无害。
 - 推进学习阶段、改教程 demo → 动仓库根，跟 ROADMAP 阶段表走；改裸写对照 → 只动 `harness/`，不进阶段表。
 
 ## Credentials

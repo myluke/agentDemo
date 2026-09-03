@@ -14,8 +14,8 @@ ROADMAP「为什么用框架？裸写不行吗？」那节的实物对照。框�
 | `compact()`             | checkpointer 旁的 `trim_messages` / 上下文管理  |
 | `confirm()` 确认门      | Claude Code 的 permission prompt（**框架里没有**，得自己写） |
 
-与阶段 8 `tools.py` 是同一个形状：那边靠 `AIMessage` / `ToolMessage` 对象，
-这边连消息封装都没有，就是 dict 进 dict 出。看懂这份，再回头看 `agent_graph.py`
+与阶段 8 `s08_tools.py` 是同一个形状：那边靠 `AIMessage` / `ToolMessage` 对象，
+这边连消息封装都没有，就是 dict 进 dict 出。看懂这份，再回头看 `s09_agent_graph.py`
 那张图，会发现 LangGraph 只是把这个 while 循环换了个说法。
 """
 import json
@@ -24,9 +24,9 @@ from pathlib import Path
 
 import requests
 
-# 注意是 append 不是 insert(0)——仓库根有阶段 8 的 tools.py（会拖进 LangChain +
-# rag_basic）。insert(0) 会把根排到 harness/ 前面，`import tools` 就被那个劫持了。
-# append 只让根「能被找到」以 import llm，harness/ 仍排在前，tools 正确命中本地。
+# 用 append 不是 insert(0)：只需让仓库根「能被找到」以 import llm，harness/ 仍排在前。
+# （历史原因：阶段 8 的工具 demo 曾叫 tools.py，与本地同名，insert(0) 会让 `import tools`
+# 劫持到根那个；它已更名 s08_tools.py，冲突消失，但 append 语义更准，保留。）
 sys.path.append(str(Path(__file__).parent.parent))
 
 from llm import API_KEY, BASE_URL, EFFORT, MODEL  # noqa: E402

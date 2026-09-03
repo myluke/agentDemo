@@ -6,10 +6,10 @@
 ## 1. Agent 是固定工作流,还是有规划、决策、循环执行能力?
 
 - **固定工作流 (Workflow)**:步骤在代码里写死,LLM 只填空。可预测、易调试、成本可控。
-  - 本仓库:阶段 2–4(`multi_step_chain.py`、`parallel_branch.py`)。
+  - 本仓库:阶段 2–4(`s02_multi_step_chain.py`、`s04_parallel_branch.py`)。
 - **自主 Agent**:LLM 在循环中自行决定调哪个工具、何时停止(ReAct 模式:
   思考 → 行动 → 观察 → 再思考)。
-  - 本仓库:阶段 8 `tools.py` 手写 tool loop;阶段 9 `agent_graph.py` LangGraph ReAct;
+  - 本仓库:阶段 8 `s08_tools.py` 手写 tool loop;阶段 9 `s09_agent_graph.py` LangGraph ReAct;
     `harness/harness.py` 裸写循环。
 - **判断标准**:控制流由谁决定。写死在代码里 = workflow;由模型输出(tool_calls / 终止信号)决定 = agent。
 - **工程共识**:能用 workflow 就不用 agent。自主性越高,可靠性越难保证。
@@ -17,7 +17,7 @@
 ## 2. 有没有状态管理、短期记忆、长期记忆?
 
 - **状态管理**:单次运行内的结构化状态(消息列表、中间结果)。LangGraph 用 State + reducer。
-- **短期记忆**:多轮对话历史。阶段 5 `chat_memory.py` 用 LangGraph checkpointer
+- **短期记忆**:多轮对话历史。阶段 5 `s05_chat_memory.py` 用 LangGraph checkpointer
   按 `thread_id` 隔离会话;超长时用 `trim_messages` 截断或摘要压缩
   (`harness/` 的 `compact()` 是手写版摘要压缩)。
 - **长期记忆**:跨会话持久化——向量库存事实、文件/DB 存用户偏好,检索时按需注入。
@@ -34,16 +34,16 @@
 
 ## 4. 有没有 RAG、向量检索、Rerank 和知识库权限过滤?
 
-- **基础 RAG**:切块 → 向量化 → top-k 检索 → 塞 prompt。阶段 6 `rag_basic.py`。
-- **混合检索**:向量(语义)+ BM25(关键词)并联,RRF 融合。`rag_hybrid.py`。
-- **Rerank**:粗召回 top-50 后用 cross-encoder 精排取 top-5,显著提准。`rag_hybrid.py`。
+- **基础 RAG**:切块 → 向量化 → top-k 检索 → 塞 prompt。阶段 6 `s06_rag_basic.py`。
+- **混合检索**:向量(语义)+ BM25(关键词)并联,RRF 融合。`s06_rag_hybrid.py`。
+- **Rerank**:粗召回 top-50 后用 cross-encoder 精排取 top-5,显著提准。`s06_rag_hybrid.py`。
 - **权限过滤**:检索时按用户身份过 metadata filter(ACL),**必须在检索层做**,
   不能靠 prompt 叮嘱模型"别看无权文档"。本仓库未覆盖,生产必答项。
 
 ## 5. 如何做 Agent 评测、Tracing、成功率统计和成本监控?
 
 - **Tracing**:记录每次运行的完整调用树(每步 LLM 输入输出、工具调用、耗时、token)。
-  阶段 7 `langsmith_tracing.py`:本地 `collect_runs` 拿 run tree,LangSmith 上传可选。
+  阶段 7 `s07_langsmith_tracing.py`:本地 `collect_runs` 拿 run tree,LangSmith 上传可选。
 - **评测**:固定评测集 + 自动判分(精确匹配 / LLM-as-judge / 工具调用轨迹比对),
   每次改 prompt 或换模型跑回归。
 - **成功率统计**:任务级(端到端完成率)与步骤级(单次工具调用成功率)分开统计。

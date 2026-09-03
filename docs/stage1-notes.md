@@ -1,6 +1,6 @@
 # 阶段 1 · LCEL 基础 — 回顾笔记
 
-配套代码：[`hello.py`](../hello.py)
+配套代码：[`s01_hello.py`](../s01_hello.py)
 
 ---
 
@@ -46,7 +46,7 @@ model = ChatAnthropic(
 
 ## 易踩点
 
-- `if __name__ == "__main__":` 包住执行代码——被 `import` 时不触发模型调用，只有直接 `python hello.py` 才跑。
+- `if __name__ == "__main__":` 包住执行代码——被 `import` 时不触发模型调用，只有直接 `python s01_hello.py` 才跑。
 - `{question}` 是模板占位符，`invoke` 时用 dict 的键去填，键名必须对上。
 
 ---

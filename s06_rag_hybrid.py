@@ -1,6 +1,6 @@
 """混合检索 + 重排：把阶段 6 的「跑通」推到「能用」。
 
-`rag_basic.py` 是纯向量单路召回，生产 RAG 普遍在它两侧各加一环：
+`s06_rag_basic.py` 是纯向量单路召回，生产 RAG 普遍在它两侧各加一环：
 
     问题 ─┬─ BM25 关键词检索 ─┐
           └─ 向量语义检索   ─┴─ RRF 融合 ─→ 重排(rerank) ─→ 喂给模型
@@ -18,7 +18,7 @@
 - 但候选多了就稀释重点、费 token，所以再用一个更贵、更准的模型精排出前几条。
 - 业内共识：加 rerank 通常比换更大的 embedding 模型收益更大，成本也更低。
 
-本文件复用 rag_basic 的语料、切分和向量库，只替换「检索」这一环——
+本文件复用 s06_rag_basic 的语料、切分和向量库，只替换「检索」这一环——
 下游 prompt / model / 链的形状和阶段 6 完全一致。
 """
 import math
@@ -33,7 +33,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from pydantic import BaseModel, Field
 
 from llm import openai_chat
-from rag_basic import DOC, LocalEmbeddings, bigrams, format_docs, model
+from s06_rag_basic import DOC, LocalEmbeddings, bigrams, format_docs, model
 
 # 在阶段 6 的语料上补一条带**编号**的规则：这类罕见 token 正是向量检索的软肋、
 # BM25 的强项，用来演示两路互补（见文末自检）。
@@ -63,7 +63,7 @@ _N = len(_toks)
 
 
 def bm25_search(query: str, k: int = 5) -> list[Document]:
-    """按 BM25 打分取前 k 块。切词复用 rag_basic.bigrams，和向量那路保持一致。"""
+    """按 BM25 打分取前 k 块。切词复用 s06_rag_basic.bigrams，和向量那路保持一致。"""
     q = set(bigrams(query))
     scored = []
     for i, toks in enumerate(_toks):

@@ -8,18 +8,18 @@
 
 | # | 阶段 | 核心概念 | demo |
 |---|------|---------|------|
-| 1 | LCEL 基础 | `prompt \| model \| parser` | `hello.py` |
-| 2 | 顺序链 | `RunnablePassthrough.assign` | `multi_step_chain.py` |
-| 3 | 结构化输出 | `with_structured_output` | `structured_output.py` |
-| 4 | 并行 & 分支 | `RunnableParallel` / `RunnableBranch` | `parallel_branch.py` |
-| 5 | 记忆 / 多轮 | `MessagesState` + checkpointer + `thread_id` | `chat_memory.py` |
-| 6 | 检索 (RAG) | 加载→切分→向量化→检索；混合检索 + 重排 | `rag_basic.py` / `rag_hybrid.py` |
-| 7 | 可观测性 | `collect_runs` 本地 run 树，LangSmith 上传可选 | `langsmith_tracing.py` |
-| 8 | 工具调用 | `@tool` + `bind_tools`，手写 tool 循环 | `tools.py` |
-| 9 | Agent | LangGraph `ToolNode` + `tools_condition` 成环 | `agent_graph.py` |
+| 1 | LCEL 基础 | `prompt \| model \| parser` | `s01_hello.py` |
+| 2 | 顺序链 | `RunnablePassthrough.assign` | `s02_multi_step_chain.py` |
+| 3 | 结构化输出 | `with_structured_output` | `s03_structured_output.py` |
+| 4 | 并行 & 分支 | `RunnableParallel` / `RunnableBranch` | `s04_parallel_branch.py` |
+| 5 | 记忆 / 多轮 | `MessagesState` + checkpointer + `thread_id` | `s05_chat_memory.py` |
+| 6 | 检索 (RAG) | 加载→切分→向量化→检索；混合检索 + 重排 | `s06_rag_basic.py` / `s06_rag_hybrid.py` |
+| 7 | 可观测性 | `collect_runs` 本地 run 树，LangSmith 上传可选 | `s07_langsmith_tracing.py` |
+| 8 | 工具调用 | `@tool` + `bind_tools`，手写 tool 循环 | `s08_tools.py` |
+| 9 | Agent | LangGraph `ToolNode` + `tools_condition` 成环 | `s09_agent_graph.py` |
 
-demo 之间**故意互相 import**：`tools.py` 复用 `rag_basic.py` 的 retriever，
-`agent_graph.py` 复用 `tools.py` 的工具与已绑定模型——后一阶段是前一阶段的组装，
+demo 之间**故意互相 import**：`s08_tools.py` 复用 `s06_rag_basic.py` 的 retriever，
+`s09_agent_graph.py` 复用 `s08_tools.py` 的工具与已绑定模型——后一阶段是前一阶段的组装，
 不是重写。
 
 ## harness/ — 主线之外的对照组
@@ -27,14 +27,15 @@ demo 之间**故意互相 import**：`tools.py` 复用 `rag_basic.py` 的 retrie
 [`harness/`](harness/) **不是第 10 阶段**：同一个 agent 循环去掉框架裸写一遍，
 只用 `requests` + 标准库直发 `/v1/chat/completions`。五个零件（循环、注册分发、
 结果回灌、压缩、确认门）逐一对应框架概念，用来看清阶段 8/9 里 LangChain/LangGraph
-到底替你做了什么。与主线**互不 import**（只从 `llm.py` 取凭据常量）；注意根目录与
-`harness/` 各有一个 `tools.py`，同名不同物。详见 [harness/README.md](harness/README.md)。
+到底替你做了什么。与主线**互不 import**（只从 `llm.py` 取凭据常量）；它的工具层
+`harness/tools.py` 和主线阶段 8 的 `s08_tools.py` 是两个独立实现。详见
+[harness/README.md](harness/README.md)。
 
 ## 运行
 
 ```bash
 pip install -r requirements.txt     # 版本全部钉死
-.venv/bin/python hello.py           # 任意一个 demo，各自可独立跑
+.venv/bin/python s01_hello.py           # 任意一个 demo，各自可独立跑
 ```
 
 ## 配置

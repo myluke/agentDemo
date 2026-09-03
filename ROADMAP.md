@@ -23,21 +23,21 @@ LCEL 链——所以前 8 阶段不是铺垫，是阶段 9 的零件。
 
 | # | 阶段 | 核心概念 | demo | 状态 |
 |---|------|---------|------|------|
-| 1 | LCEL 基础 | `prompt \| model \| parser` 管道 | `hello.py` | ✅ |
-| 2 | 顺序链 | `RunnablePassthrough.assign`，上一步喂下一步 | `multi_step_chain.py` | ✅ |
-| 3 | 结构化输出 | 让模型返回 JSON/对象，`with_structured_output` | `structured_output.py` | ✅ |
-| 4 | 并行 & 分支 | `RunnableParallel` 并发、`RunnableBranch` 条件分流 | `parallel_branch.py` | ✅ |
-| 5 | 记忆 / 多轮 | `MessagesState`、checkpointer、`thread_id` | `chat_memory.py` | ✅（例外用 LangGraph） |
-| 6 | 检索 (RAG) | 加载→切分→向量化→检索→喂给模型；混合检索 + 重排 | `rag_basic.py` / `rag_hybrid.py` | ✅ |
-| 7 | LangSmith 可观测性 | Trace 层级、项目/标签、耗时与 token、错误定位、敏感数据边界 | `langsmith_tracing.py` | ✅ |
-| 8 | 工具调用 | 给模型挂工具（function calling），模型自己决定调不调 | `tools.py` | ✅ |
-| 9 | Agent | 用 **LangGraph** 编排能自主循环、选工具的 Agent | `agent_graph.py` | ✅ 👉 全部完成 |
+| 1 | LCEL 基础 | `prompt \| model \| parser` 管道 | `s01_hello.py` | ✅ |
+| 2 | 顺序链 | `RunnablePassthrough.assign`，上一步喂下一步 | `s02_multi_step_chain.py` | ✅ |
+| 3 | 结构化输出 | 让模型返回 JSON/对象，`with_structured_output` | `s03_structured_output.py` | ✅ |
+| 4 | 并行 & 分支 | `RunnableParallel` 并发、`RunnableBranch` 条件分流 | `s04_parallel_branch.py` | ✅ |
+| 5 | 记忆 / 多轮 | `MessagesState`、checkpointer、`thread_id` | `s05_chat_memory.py` | ✅（例外用 LangGraph） |
+| 6 | 检索 (RAG) | 加载→切分→向量化→检索→喂给模型；混合检索 + 重排 | `s06_rag_basic.py` / `s06_rag_hybrid.py` | ✅ |
+| 7 | LangSmith 可观测性 | Trace 层级、项目/标签、耗时与 token、错误定位、敏感数据边界 | `s07_langsmith_tracing.py` | ✅ |
+| 8 | 工具调用 | 给模型挂工具（function calling），模型自己决定调不调 | `s08_tools.py` | ✅ |
+| 9 | Agent | 用 **LangGraph** 编排能自主循环、选工具的 Agent | `s09_agent_graph.py` | ✅ 👉 全部完成 |
 
-## 番外 · `web_agent.py`（Web UI）
+## 番外 · `s10_web_agent.py`（Web UI）
 
 不新增阶段，只给阶段 9 的图套一层 HTTP（FastAPI + 内嵌 HTML，`.venv/bin/python
-web_agent.py` 起在 <http://127.0.0.1:8000>）。图、工具、记忆全是现成零件，直接
-`from agent_graph import ask`，一行没重写。
+s10_web_agent.py` 起在 <http://127.0.0.1:8000>）。图、工具、记忆全是现成零件，直接
+`from s09_agent_graph import ask`，一行没重写。
 
 唯一的真变化是 **thread_id 从代码写死变成每个标签页一个**（`crypto.randomUUID()`）：
 刷新即新会话、两个标签页各记各的——阶段 5 讲的 thread 隔离终于有了看得见的实物。
@@ -46,7 +46,7 @@ web_agent.py` 起在 <http://127.0.0.1:8000>）。图、工具、记忆全是现
 
 ## 阶段 7–9 已交付要点
 
-**阶段 7 · 可观测性**（`langsmith_tracing.py`）：`collect_runs()` 把 run 树留在本地，
+**阶段 7 · 可观测性**（`s07_langsmith_tracing.py`）：`collect_runs()` 把 run 树留在本地，
 不用 key、不用网络就能看层级 / 耗时 / token / 错误节点；`LANGSMITH_TRACING=true` 只
 决定「同一棵树是否上传到网页」。要看网页版：设 `LANGSMITH_TRACING=true` +
 `LANGSMITH_API_KEY` + `LANGSMITH_PROJECT` 再跑任意 demo。三个开关的边界：
@@ -60,12 +60,12 @@ web_agent.py` 起在 <http://127.0.0.1:8000>）。图、工具、记忆全是现
 隐私边界：prompt、响应、检索片段、metadata 都会随上传离开本机；密钥和个人数据
 不进 tags/metadata，生产前配脱敏、采样与保留策略。
 
-**阶段 8 · 工具调用**（`tools.py`）：`@tool` + `bind_tools`，手写
+**阶段 8 · 工具调用**（`s08_tools.py`）：`@tool` + `bind_tools`，手写
 「模型返回 tool_calls → 你执行 → ToolMessage 回灌」循环，看清每一跳的消息形状。
 `search_policy` 直接复用阶段 6 的 retriever——RAG 从「每问必检索」变成「模型想查才查」。
 docstring 是模型选工具的唯一依据。`max_turns` 是必须的护栏。
 
-**阶段 9 · Agent**（`agent_graph.py`）：阶段 8 的手写循环交给 `ToolNode` +
+**阶段 9 · Agent**（`s09_agent_graph.py`）：阶段 8 的手写循环交给 `ToolNode` +
 `tools_condition`，加一条 `tools → agent` 的**回边**成环；再挂阶段 5 的 checkpointer
 拿到跨轮记忆。链是无环的、你规定顺序，图有环、模型规定跑几圈——这就是全部区别。
 
@@ -83,7 +83,7 @@ docstring 是模型选工具的唯一依据。`max_turns` 是必须的护栏。
 | 静态裁剪 | 把 API 端点的机械映射合并成少量参数化工具——一个 `query_db(table, filter)` 顶 100 个 `get_xxx` | 需要人工设计，但常常最有效 |
 
 注意：工具选择错误的头号原因是 description 含糊（何时用/何时不用没写清），
-不是数量本身。若动手实验，方案 1 可直接复用阶段 6 `rag_basic.py` 的
+不是数量本身。若动手实验，方案 1 可直接复用阶段 6 `s06_rag_basic.py` 的
 retriever 基础设施——和检索文档是同一套东西，只是被检索的对象换成了工具。
 
 ## 约定
@@ -95,7 +95,7 @@ retriever 基础设施——和检索文档是同一套东西，只是被检索�
 
 ## 为什么用框架？裸写不行吗？
 
-行。`rag_basic.py` 的核心流程翻成 Go 裸写就四步——调 `/v1/embeddings` 拿向量、
+行。`s06_rag_basic.py` 的核心流程翻成 Go 裸写就四步——调 `/v1/embeddings` 拿向量、
 点积排序取 top-k、拼提示词、调 `/v1/chat/completions` 解析 SSE，大概 200 行。
 `InMemoryVectorStore` 就是 list + 余弦相似度，`|` 就是 `__or__` 重载，没有魔法。
 **需求锁死在一条链上，裸写更好**：更快、单二进制、没有 `.venv` 和版本震荡。

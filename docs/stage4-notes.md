@@ -1,6 +1,6 @@
 # 阶段 4 · 并行 & 分支 — 回顾笔记
 
-配套代码：[`parallel_branch.py`](../parallel_branch.py)
+配套代码：[`s04_parallel_branch.py`](../s04_parallel_branch.py)
 
 ---
 

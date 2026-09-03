@@ -1,6 +1,6 @@
 # 阶段 9 · Agent（LangGraph 编排）— 回顾笔记
 
-配套代码：[`agent_graph.py`](../agent_graph.py)
+配套代码：[`s09_agent_graph.py`](../s09_agent_graph.py)
 
 ---
 
@@ -41,12 +41,12 @@ assert ("tools", "agent") in edges   # 没有回边就退化成单向链，Agent
 
 | 零件 | 来自 | 作用 |
 |---|---|---|
-| `TOOLS`、已 bind 的 `model` | 阶段 8 `tools.py` | 决策 + 动手 |
-| `search_policy` → retriever | 阶段 6 `rag_basic.py` | 模型想查才查 |
-| `checkpointer` + `thread_id` | 阶段 5 `chat_memory.py` | 跨轮记忆 |
+| `TOOLS`、已 bind 的 `model` | 阶段 8 `s08_tools.py` | 决策 + 动手 |
+| `search_policy` → retriever | 阶段 6 `s06_rag_basic.py` | 模型想查才查 |
+| `checkpointer` + `thread_id` | 阶段 5 `s05_chat_memory.py` | 跨轮记忆 |
 | `ToolNode` / `tools_condition` | LangGraph 预制件 | 替掉阶段 8 手写的两段 |
 
-`agent_graph.py` 直接 `from tools import TOOLS, model`，不复制。
+`s09_agent_graph.py` 直接 `from s08_tools import TOOLS, model`，不复制。
 **教学价值恰恰在这条复用链上**：阶段 6 的检索器原样成为阶段 8 的工具，
 阶段 8 的工具原样进阶段 9 的图。
 

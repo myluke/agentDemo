@@ -1,6 +1,6 @@
 # 阶段 5 · 记忆 / 多轮对话 — 回顾笔记
 
-配套代码：[`chat_memory.py`](../chat_memory.py)
+配套代码：[`s05_chat_memory.py`](../s05_chat_memory.py)
 
 ---
 

@@ -1,6 +1,6 @@
 # 阶段 8 · 工具调用（function calling）— 回顾笔记
 
-配套代码：[`tools.py`](../tools.py)
+配套代码：[`s08_tools.py`](../s08_tools.py)
 
 ---
 
@@ -108,7 +108,7 @@ def search_policy(query: str) -> str:
 - **参数复杂**（嵌套对象、枚举、可选字段）→ 填不对 schema，最常见的失败形态
 - **抗干扰**（用户说"别查了直接告诉我"）→ 弱模型容易被带跑
 
-这正是阶段 9 要面对的：`agent_graph.py` 是自动循环，跳数不由你控制，
+这正是阶段 9 要面对的：`s09_agent_graph.py` 是自动循环，跳数不由你控制，
 单跳看不出的差距会被放大。工程上的应对不是堆最强模型，而是**把工具按领域拆开、
 docstring 写死触发条件、参数 schema 尽量扁平**——做到位之后模型往下降一档
 通常还扛得住，省下的是每次请求都要付的钱。
@@ -139,7 +139,7 @@ LangChain 只做两件机械活：把 `@tool` 序列化成 JSON schema 塞进请
 
 ## 回头看阶段 3：结构化输出是被「劫持」的工具调用
 
-`structured_output.py` 里那句 `with_structured_output(JobPosting, method="function_calling")`，
+`s03_structured_output.py` 里那句 `with_structured_output(JobPosting, method="function_calling")`，
 底层做的事和本阶段**一模一样**：把 Pydantic 类转成一个名叫 `JobPosting` 的工具 schema，
 `tool_choice` 强制模型必须调它，最后从 `tool_calls[0]["args"]` 里把参数拿出来喂给 Pydantic。
 
@@ -170,7 +170,7 @@ LangChain 只做两件机械活：把 `@tool` 序列化成 JSON schema 塞进请
 **踩过的坑**：`ChatOpenAI` 把 `method` 默认值**覆写**成了 `json_schema`
 （`base.py:3723`），只有基类 `BaseChatOpenAI` 才是 `function_calling`。而本仓库网关
 不兑现 `response_format`，参数被静默忽略后模型自由发挥，校验必挂。
-**所以 `structured_output.py` 里那个 `method="function_calling"` 是必须显式写的，不是装饰。**
+**所以 `s03_structured_output.py` 里那个 `method="function_calling"` 是必须显式写的，不是装饰。**
 
 `json_schema` 还有个语义陷阱：strict 模式下 `Field(default=None)` 的 `default` 会被丢掉、
 字段被强塞进 `required`，"没提到就留空"变成"必须显式吐 null"。
@@ -250,8 +250,8 @@ assert not model.invoke([HumanMessage("你好呀")]).tool_calls   # 闲聊不该
 | `for call in ai.tool_calls: ...append(ToolMessage)` | `ToolNode(TOOLS)` |
 | `for _ in range(max_turns)` | 图的回边 + `recursion_limit` |
 
-工具本身、模型本身**原样复用**——`agent_graph.py` 直接
-`from tools import TOOLS, model`。
+工具本身、模型本身**原样复用**——`s09_agent_graph.py` 直接
+`from s08_tools import TOOLS, model`。
 
 ---
 

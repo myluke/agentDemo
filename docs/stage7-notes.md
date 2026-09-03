@@ -1,6 +1,6 @@
 # 阶段 7 · LangSmith 可观测性 — 回顾笔记
 
-配套代码：[`langsmith_tracing.py`](../langsmith_tracing.py)
+配套代码：[`s07_langsmith_tracing.py`](../s07_langsmith_tracing.py)
 
 ---
 
@@ -32,7 +32,7 @@
 
 ```bash
 LANGSMITH_TRACING=true LANGSMITH_API_KEY=ls__xxx LANGSMITH_PROJECT=agentDemo \
-  .venv/bin/python rag_basic.py
+  .venv/bin/python s06_rag_basic.py
 ```
 
 代码一行不改——这就是「旁路观测」的含义。

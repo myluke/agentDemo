@@ -35,7 +35,7 @@ model = openai_chat(max_tokens=1024, temperature=0)  # temperature=0：照着资
 def bigrams(text: str) -> list[str]:
     """中文没有空格分词，用字符 bigram 当「词」：「免运费」→ ["免运", "运费"]。
 
-    够用且零依赖（不引 jieba）。阶段 6 的向量化和 rag_hybrid 的 BM25 共用它，
+    够用且零依赖（不引 jieba）。阶段 6 的向量化和 s06_rag_hybrid 的 BM25 共用它，
     两路检索切词一致，排序差异才只来自打分方式而不是切词方式。
     """
     s = re.sub(r"\s+", "", text.lower())

@@ -1,9 +1,9 @@
 # 阶段 3 · 结构化输出 — 回顾笔记
 
-配套代码：[`structured_output.py`](../structured_output.py)
+配套代码：[`s03_structured_output.py`](../s03_structured_output.py)
 
 > **provider 变更提示**：本篇初稿写于 demo 还用 `ChatAnthropic` 直连 `/v1/messages` 时。
-> 现在 `structured_output.py` 走 `llm.py` 的 `openai_chat()` → **`ChatOpenAI`**，
+> 现在 `s03_structured_output.py` 走 `llm.py` 的 `openai_chat()` → **`ChatOpenAI`**，
 > 打的是 `POST /v1/chat/completions`。§3–§8、§11 已按 OpenAI 协议改写；
 > §9–§10、§13–§15 讲的是两家协议对比与国产网关通病，本身仍成立，保留。
 
@@ -18,7 +18,7 @@ assert job2.remote is False, f"现场办公 remote 应为 False，实得 {job2.r
 
 算，但不是 pytest 那种正式测试，而是内嵌在 `__main__` 里的**轻量自检（self-check）**。
 
-- **不是独立测试文件**：没有框架，不会被测试运行器自动收集；只在手动 `python structured_output.py` 跑 demo 时顺带执行一次。
+- **不是独立测试文件**：没有框架，不会被测试运行器自动收集；只在手动 `python s03_structured_output.py` 跑 demo 时顺带执行一次。
 - **作用**：守住核心契约——「可选字段在原文没提到时必须留空，而不是被模型编造」。拿一段没写薪资、明说现场办公的文本，断言 `min_salary_k is None`、`remote is False`。逻辑退化成乱填时会立刻 `AssertionError`，而不是静默返回错数据。
 - **局限**：依赖真实模型调用，不是确定性单测，模型某次抽取抖动理论上也可能触发。对教学 demo「跑一次能自证核心行为没坏」已足够，不值得为它搭 mock 和框架。
 - **何时升级**：真要进 CI，才拆成 `test_*.py` + mock 模型响应。
@@ -115,7 +115,7 @@ JobPosting 对象
 
 ## 5. 怎么看到更底层的请求？
 
-设环境变量即可，SDK 自带（`structured_output.py` 已用 `os.environ.setdefault` 固化）。
+设环境变量即可，SDK 自带（`s03_structured_output.py` 已用 `os.environ.setdefault` 固化）。
 **注意换 provider 就要换变量名**——`ChatOpenAI` 底下是 openai SDK，只认 `OPENAI_LOG`：
 
 ```python
@@ -125,7 +125,7 @@ os.environ.setdefault("OPENAI_LOG", "debug")   # 曾经是 ANTHROPIC_LOG
 或临时开，不改代码：
 
 ```bash
-OPENAI_LOG=debug .venv/bin/python structured_output.py
+OPENAI_LOG=debug .venv/bin/python s03_structured_output.py
 ```
 
 实测发出的请求体（`function_calling`，删节）：
@@ -155,7 +155,7 @@ POST https://helm.easymeta.au/v1/chat/completions
 - `parallel_tool_calls: false` 是 `with_structured_output` 自己加的——只要一张表，
   不许模型并行调多次。
 
-**比 SDK 日志更好用的办法**：`structured_output.py` 里已经挂了 httpx 钩子，
+**比 SDK 日志更好用的办法**：`s03_structured_output.py` 里已经挂了 httpx 钩子，
 直接拿到响应 body（SDK 的 debug 日志只打响应头，不打 body）：
 
 ```python

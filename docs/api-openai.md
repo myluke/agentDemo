@@ -157,7 +157,7 @@ curl https://api.openai.com/v1/vector_stores/vs_abc/search \
   -H "Authorization: Bearer $KEY" -d '{"query": "会员到期后数据保留多久"}'
 ```
 
-**和本仓库阶段 6 的对应**：`rag_basic.py` 里那五步是自己搭的，好处是每一步都能调
+**和本仓库阶段 6 的对应**：`s06_rag_basic.py` 里那五步是自己搭的，好处是每一步都能调
 （chunk_size、overlap、k 全在你手里），也能换任何向量库。这个端点是把五步交出去，
 省事但参数由平台定。**先手搓一遍再决定要不要托管**，否则出问题不知道该调哪儿。
 
@@ -326,7 +326,7 @@ Anthropic 本来就没有 embedding，但国产厂商里有两家做得不错—
 | 智谱 | `embedding-3` | `https://open.bigmodel.cn/api/paas/v4` | 维度 256–2048 可调，约 0.5 元/百万 token |
 | DeepSeek | 无 | — | 只做 chat，向量得另找 |
 
-换法就是 `rag_basic.py` 里那一行（对话仍走现有的 `ChatAnthropic`，两边各用各的——
+换法就是 `s06_rag_basic.py` 里那一行（对话仍走现有的 `ChatAnthropic`，两边各用各的——
 LangChain 里 chat model 和 embeddings 本来就是独立组件）：
 
 ```python
