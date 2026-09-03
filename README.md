@@ -22,6 +22,14 @@ demo 之间**故意互相 import**：`tools.py` 复用 `rag_basic.py` 的 retrie
 `agent_graph.py` 复用 `tools.py` 的工具与已绑定模型——后一阶段是前一阶段的组装，
 不是重写。
 
+## harness/ — 主线之外的对照组
+
+[`harness/`](harness/) **不是第 10 阶段**：同一个 agent 循环去掉框架裸写一遍，
+只用 `requests` + 标准库直发 `/v1/chat/completions`。五个零件（循环、注册分发、
+结果回灌、压缩、确认门）逐一对应框架概念，用来看清阶段 8/9 里 LangChain/LangGraph
+到底替你做了什么。与主线**互不 import**（只从 `llm.py` 取凭据常量）；注意根目录与
+`harness/` 各有一个 `tools.py`，同名不同物。详见 [harness/README.md](harness/README.md)。
+
 ## 运行
 
 ```bash

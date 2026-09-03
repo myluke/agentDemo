@@ -12,6 +12,9 @@ tracing/observability (local `collect_runs` run trees, LangSmith upload optional
 covers tool calling with a hand-written tool loop; stage 9 wraps that loop in a LangGraph
 ReAct graph with a checkpointer. All against the gateway via `langchain-openai` (OpenAI protocol).
 
+`harness/` sits **outside** the staged track: a framework-free agent harness written
+against the raw HTTP API (see "harness/ 与教程主线的区别" below).
+
 Demos import each other on purpose: `tools.py` reuses `rag_basic.py`'s retriever,
 `agent_graph.py` reuses `tools.py`'s tools and bound model.
 
@@ -29,8 +32,27 @@ Demos import each other on purpose: `tools.py` reuses `rag_basic.py`'s retriever
 .venv/bin/python tools.py
 .venv/bin/python agent_graph.py
 .venv/bin/python web_agent.py    # http://127.0.0.1:8000
+.venv/bin/python harness/harness.py   # 裸写 harness REPL（教程主线之外，见下节）
 pip install -r requirements.txt    # rebuild deps on a fresh machine
 ```
+
+## harness/ 与教程主线的区别
+
+`harness/` 不是第 10 阶段，是主线的**对照组**——同一个 agent 循环，去掉框架重写一遍：
+
+| | 教程主线（阶段 1–9，仓库根） | `harness/` |
+|---|---|---|
+| 依赖 | LangChain / LangGraph / `langchain-openai` | 仅 `requests` + 标准库，零新增 |
+| 调模型 | `llm.py` 的 `openai_chat()` → `ChatOpenAI` | 自拼 `BASE_URL + "/v1/chat/completions"`，`requests.post` 裸发 |
+| 消息 | `AIMessage` / `ToolMessage` 对象 | 原始 dict 进出 |
+| 工具 | `@tool` + `bind_tools` + `ToolNode`（根 `tools.py`） | `@register` 注册表 + `dispatch()`（`harness/tools.py`） |
+| 历史管理 | checkpointer / `trim_messages` | 手写 `compact()` 摘要压缩 |
+| 确认门 | 无 | 危险工具 `[y/N]`，拒绝也回灌 |
+
+改动规则：
+- **两边互不 import**。`harness/` 只从 `llm.py` 取 `API_KEY / BASE_URL / MODEL / EFFORT` 常量，不碰任何 LangChain 对象；教程 demo 也不 import `harness/`。
+- 根目录和 `harness/` 各有一个 `tools.py`，**同名不同物**。在 `harness/` 内跑脚本须 `sys.path.append`（不是 `insert(0)`），否则会劫持到根目录那个。
+- 推进学习阶段、改教程 demo → 动仓库根，跟 ROADMAP 阶段表走；改裸写对照 → 只动 `harness/`，不进阶段表。
 
 ## Credentials
 
