@@ -5,6 +5,46 @@
 
 ---
 
+## 2026-09-03 — `s06_rag_chroma.py`：向量库换 Chroma，兼修 `hash()` 加盐坑
+
+**做了什么**：新增 `s06_rag_chroma.py`（阶段 6 番外，不进阶段表），复用
+`s06_rag_basic` 的 `LocalEmbeddings` / `chunks` / `format_docs`，只把第 4 步的
+`InMemoryVectorStore` 换成 `Chroma(persist_directory="chroma_db")`。同时把
+`LocalEmbeddings._vec` 的 `hash(g)` 改成 `zlib.crc32(g.encode())`（这是对
+`s06_rag_basic.py` 的唯一改动）。requirements 加 `langchain-chroma==1.1.0` /
+`chromadb==1.5.9`，`.gitignore` 加 `chroma_db/`。
+
+**为什么加这个 demo**：阶段 6 的注释一直写着「换 Chroma/PGVector 只改这一行」，
+但没有实物。摆一个真换过的版本，读者能直接看到 `Embeddings` 与 `VectorStore`
+两个接口一分开的收益：换库只动建库那行，`as_retriever()` 之后的链一个字不用改。
+顺带带出内存库演示不了的东西——**持久化**。demo 的文档只有 6 块、嵌入是本地哈希，
+重算无感；真实项目嵌入要调外部 API，按 token 收费、有速率限制，几万块文档重算
+是实打实的钱和分钟。所以文件里写了「集合非空就跳过嵌入」的分支，这个分支在内存库
+里根本无从写起。
+
+**`hash()` 加盐坑的来龙去脉**：原实现 `v[hash(g) % self.dim] += n` 在内存库下
+完全正确——建库和查询在同一进程，盐相同，同一 bigram 永远落同一个桶。改成落盘后
+第二次运行开始检索全空：CPython 对 `str` 的 hash 默认随机加盐（PYTHONHASHSEED，
+PEP 456，防哈希碰撞 DoS），**新进程的盐不同，同一 bigram 落到完全不同的维度**，
+查询向量与库里文档向量几乎正交，点积趋近 0。要命的是它不报错，只是永远搜不到，
+是典型的静默失效。凡是要落盘、要跨进程复现的哈希都不能用内置 `hash()`。
+
+**为什么选 crc32**：只要「确定性 + 均匀分桶」两条，不要密码学强度（这里没有攻击者
+构造碰撞的场景）。`zlib.crc32` 在标准库里、纯 C 实现比 `hashlib` 快一个量级、
+直接返回 int 不用再从摘要里切字节。`hashlib.md5(...).digest()` 也对，但要多绕
+一层字节转整数，且 md5 在某些合规扫描里会误报。固定 `PYTHONHASHSEED=0` 同样能修，
+但那是要求调用方配环境变量，把库的正确性外包给运行环境，不接受。
+
+**为什么 `chroma_db/` 不入库**：向量是源文档 + 嵌入实现的派生物，随时可重新生成，
+和 `__pycache__/` 一个性质。入库还有两个坏处：SQLite 二进制文件 diff 不可读，
+每次跑 demo 都产生噪声改动；换嵌入实现后库里是旧向量，反倒会误导。
+
+**边界**：只判集合空不空，不判内容版本——源文档改了不会自动重建。真实项目的做法是
+给每块算内容哈希当 id、用 upsert 覆盖变更块，文件里留了 `ponytail:` 注释标记。
+`s06_rag_hybrid.py` 未动，仍走内存库 + BM25。
+
+---
+
 ## 2026-09-03 — 课程文件统一加 `sNN_` 阶段前缀
 
 **做了什么**：11 个教程 demo 用 `git mv` 加阶段号前缀——`hello.py` → `s01_hello.py`，

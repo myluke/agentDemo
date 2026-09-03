@@ -17,6 +17,7 @@
 """
 import math
 import re
+import zlib
 from collections import Counter
 
 from langchain_core.embeddings import Embeddings
@@ -59,7 +60,11 @@ class LocalEmbeddings(Embeddings):
     def _vec(self, text: str) -> list[float]:
         v = [0.0] * self.dim
         for g, n in Counter(bigrams(text)).items():
-            v[hash(g) % self.dim] += n
+            # 用 crc32 而非内置 hash()：Python 对 str 的 hash 每进程随机加盐
+            # (PYTHONHASHSEED)，同一文本跨进程会算出不同向量。内存库同进程建库+查询
+            # 看不出问题，一旦向量落盘（见 s06_rag_chroma.py），下次进程的查询向量
+            # 就和库里的对不上，检索静默失效。crc32 是确定性的，跨进程稳定。
+            v[zlib.crc32(g.encode()) % self.dim] += n
         norm = math.sqrt(sum(x * x for x in v)) or 1.0
         return [x / norm for x in v]  # 归一化后点积=余弦相似度
 

@@ -3,6 +3,8 @@
 langchain-openai==1.6.0        # ChatOpenAI，走网关的 OpenAI 协议（llm.py）
 langchain-text-splitters==1.1.2  # 阶段 6 的 RecursiveCharacterTextSplitter
 langgraph==1.2.11              # 阶段 5 checkpointer、阶段 9 Agent（ToolNode/tools_condition）
+langchain-chroma==1.1.0        # 阶段 6 番外 s06_rag_chroma.py 的持久化向量库
+chromadb==1.5.9                # langchain-chroma 底层引擎（向量落盘 chroma_db/）
 numpy==2.5.2                   # InMemoryVectorStore 内部算余弦相似度要它
 # 传递依赖，写出来是因为 API 直接用到：langchain-core（Runnable/prompt/parser）、
 # pydantic（阶段 3 结构化输出的 schema）、langsmith（阶段 7 的 collect_runs 走 core，
